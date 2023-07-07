@@ -1,0 +1,13 @@
+/target
+/Cargo.lock
+*.swp
+*.swo
+.DS_Store
+/data
+/config
+
+# Added by cargo
+#
+# already existing elements were commented out
+
+#/target
