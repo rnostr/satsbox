@@ -5,6 +5,7 @@
 .DS_Store
 /data
 /config
+/contrib/data
 
 # Added by cargo
 #

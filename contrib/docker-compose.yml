@@ -1,0 +1,139 @@
+version: '3.8'
+
+networks:
+  default:
+
+services:
+
+  bitcoind:
+    restart: unless-stopped
+    # https://github.com/lncm/docker-bitcoind
+    image: lncm/bitcoind:v25.0
+    volumes:
+      - ./data/bitcoin:/data/.bitcoin
+    networks:
+      - default
+    command:
+      - "-regtest"
+      # rpcuser=test
+      # rpcpassword=test
+      # https://jlopp.github.io/bitcoin-core-rpc-auth-generator/
+      # electrs use rpcauth cookie file
+      - "-rpcauth=test:ee624c8cb015ba65b5acb5d3001f7d32$$112541ea99f3d744ecea39ec6cc287def2bc33a05484a6217fdac63a5c22c6f3"
+      - "-fallbackfee=0.002"
+      - "-txindex=1"
+      - "-rpcbind=0.0.0.0"
+      - "-rpcallowip=0.0.0.0/0"
+      - "-zmqpubrawblock=tcp://0.0.0.0:28335"
+      - "-zmqpubrawtx=tcp://0.0.0.0:28335"
+      - "-zmqpubhashblock=tcp://0.0.0.0:28336"
+    #ports:
+    #  - 8332:8332
+    #  - 18332:18332
+    #  - 18443:18443
+    #  - 18444:18444
+    
+  btc-explorer:
+    restart: unless-stopped
+    image: getumbrel/btc-rpc-explorer:v3.3.0
+    environment:
+      BTCEXP_HOST: 0.0.0.0
+      BTCEXP_BITCOIND_URI: bitcoin://test:test@bitcoind:18443
+      BTCEXP_ADDRESS_API: electrum
+      BTCEXP_ELECTRUM_SERVERS: tcp://electrs:50001
+    ports:
+      - 3002:3002
+    networks:
+      - default
+    depends_on:
+      - bitcoind
+    links:
+      - bitcoind
+
+  electrs:
+    restart: unless-stopped
+    image: getumbrel/electrs:v0.9.14
+    environment:
+      ELECTRS_LOG_FILTERS: "INFO"
+      ELECTRS_NETWORK: "regtest"
+      ELECTRS_DAEMON_RPC_ADDR: "bitcoind:18443"
+      ELECTRS_DAEMON_P2P_ADDR: "bitcoind:18444"
+      ELECTRS_ELECTRUM_RPC_ADDR: "0.0.0.0:50001"
+      ELECTRS_SERVER_BANNER: "Electrs"
+      ELECTRS_COOKIE_FILE: "/bitcoin/regtest/.cookie"
+    volumes:
+      - ./data/electrs:/data
+      - ./data/bitcoin:/bitcoin
+    #ports:
+    #  - 50001:50001
+    networks:
+      - default
+    depends_on:
+      - bitcoind
+
+  lnd:
+    restart: unless-stopped
+    image: lightninglabs/lnd:v0.16.4-beta
+    ports:
+      - '10009:10009'
+    command: 
+      - --debuglevel=debug 
+      - --alias=lnd 
+      - --noseedbackup 
+      - --maxpendingchannels=10 
+      - --trickledelay=5000 
+      - --externalip=lnd
+      - --tlsextradomain=lnd
+      - --listen=0.0.0.0:9735 
+      - --rpclisten=0.0.0.0:10009 
+      - --restlisten=0.0.0.0:8080
+      - --bitcoin.active 
+      - --bitcoin.regtest 
+      - --bitcoin.node=bitcoind
+      - --bitcoind.rpchost=bitcoind 
+      - --bitcoind.rpcuser=test
+      - --bitcoind.rpcpass=test
+      - --bitcoind.zmqpubrawblock=tcp://bitcoind:28335
+      - --bitcoind.zmqpubrawtx=tcp://bitcoind:28336 
+      - --accept-amp
+      - --accept-keysend
+    volumes:
+      - ./data/lnd:/root/.lnd
+    networks:
+      - default
+    links:
+      - bitcoind
+    depends_on:
+      - bitcoind
+#      --lnd.macaroonpath=/root/.lnd/data/chain/bitcoin/regtest/admin.macaroon
+#      --lnd.tlspath=/root/.lnd/tls.cert 
+
+  cln:
+    restart: unless-stopped
+    image: elementsproject/lightningd:v23.05.1
+    command:
+      - --log-level=debug
+      - --alias=cln
+      - --addr=0.0.0.0:9735 
+      - --network=regtest
+      - --bitcoin-rpcconnect=bitcoind
+      - --bitcoin-rpcuser=test
+      - --bitcoin-rpcpassword=test
+      - --experimental-dual-fund
+      - --funder-policy=match
+      - --funder-policy-mod=100
+      - --lease-fee-base-msat=500sat
+      - --lease-fee-basis=50
+      - --channel-fee-max-base-msat=100sat
+      - --channel-fee-max-proportional-thousandths=2
+      - --grpc-port=10008
+    ports:
+      - '10008:10008'
+    volumes:
+      - ./data/cln:/root/.lightning
+    networks:
+      - default
+    links:
+      - bitcoind
+    depends_on:
+      - bitcoind

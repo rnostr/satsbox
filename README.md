@@ -1,5 +1,7 @@
 # Satsbox
 
+Nostr friendly bitcoin lightning custodial wallet service.
+
 ## Features
 
 - Use nostr pubkey as user, no login, no kyc.
