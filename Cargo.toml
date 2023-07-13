@@ -1,0 +1,30 @@
+[package]
+name = "satsbox"
+version = "0.1.0"
+description = "Nostr friendly bitcoin lightning custodial wallet service."
+keywords = ["lightning"]
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+authors.workspace = true
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+lightning-client = { version = "0.1.0", path = "./lightning" }
+thiserror = "1.0.43"
+
+
+[dev-dependencies]
+anyhow = "1.0.71"
+dotenvy = "0.15.7"
+
+[workspace]
+members = ["lightning"]
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+homepage = "https://github.com/satsbox"
+repository = "https://github.com/satsbox/satsbox.git"
+authors = ["Arron zhang <arronzhang@me.com>"]
