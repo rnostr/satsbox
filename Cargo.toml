@@ -3,6 +3,8 @@ name = "satsbox"
 version = "0.1.0"
 description = "Nostr friendly bitcoin lightning custodial wallet service."
 keywords = ["lightning"]
+publish = false
+
 edition.workspace = true
 license.workspace = true
 homepage.workspace = true
@@ -12,15 +14,16 @@ authors.workspace = true
 
 [dependencies]
 lightning-client = { version = "0.1.0", path = "./lightning" }
+migration = { version = "0.1.0", path = "./migration" }
+entity = { version = "0.1.0", path = "./entity" }
 thiserror = "1.0.43"
-
 
 [dev-dependencies]
 anyhow = "1.0.71"
 dotenvy = "0.15.7"
 
 [workspace]
-members = ["lightning"]
+members = ["lightning", "migration", "entity"]
 
 [workspace.package]
 edition = "2021"
