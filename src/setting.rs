@@ -1,0 +1,406 @@
+use crate::Error;
+use crate::{hash::NoOpHasherDefault, Result};
+use config::{Config, Environment, File, FileFormat};
+use notify::{event::ModifyKind, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use parking_lot::RwLock;
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::{
+    any::{Any, TypeId},
+    collections::HashMap,
+    fs,
+    ops::Deref,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
+use tracing::{error, info};
+
+pub const CARGO_PKG_VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
+
+// fn default_version() -> String {
+//     CARGO_PKG_VERSION.map(ToOwned::to_owned).unwrap_or_default()
+// }
+
+/// number of threads config
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+#[serde(default)]
+pub struct Thread {
+    /// number of http server threads
+    pub http: usize,
+}
+
+/// network config
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(default)]
+pub struct Network {
+    /// server bind host
+    pub host: String,
+    /// server bind port
+    pub port: u16,
+
+    pub real_ip_header: Option<String>,
+}
+
+impl Default for Network {
+    fn default() -> Self {
+        Self {
+            host: "127.0.0.1".to_string(),
+            port: 8080,
+            real_ip_header: None,
+        }
+    }
+}
+
+/// lightning client type
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum Lightning {
+    Lnd,
+    Cln,
+}
+
+impl Default for Lightning {
+    fn default() -> Self {
+        Self::Lnd
+    }
+}
+
+/// Lnd setting
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+// #[serde(default)]
+pub struct Lnd {
+    /// lnd grpc url
+    pub url: String,
+    /// tls.cert
+    pub cert: PathBuf,
+    /// admin.macaroon
+    pub macaroon: PathBuf,
+}
+
+/// Cln setting
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+// #[serde(default)]
+pub struct Cln {
+    /// cln grpc url
+    pub url: String,
+    /// ca.pem path
+    pub ca: PathBuf,
+    /// client.pem path
+    pub client: PathBuf,
+    /// client-key.pem
+    pub client_key: PathBuf,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Setting {
+    /// database url
+    /// https://www.sea-ql.org/SeaORM/docs/install-and-config/connection/
+    pub db_url: String,
+
+    pub thread: Thread,
+    pub network: Network,
+
+    pub lightning: Lightning,
+    pub cln: Option<Cln>,
+    pub lnd: Option<Lnd>,
+
+    /// flatten extensions setting to json::Value
+    #[serde(flatten)]
+    pub extra: HashMap<String, Value>,
+
+    /// extensions setting object
+    #[serde(skip)]
+    extensions: HashMap<TypeId, Box<dyn Any + Send + Sync>, NoOpHasherDefault>,
+}
+
+impl Default for Setting {
+    fn default() -> Self {
+        Self {
+            db_url: "sqlite://satsbox.sqlite".to_string(),
+            cln: None,
+            lnd: None,
+            lightning: Default::default(),
+            thread: Default::default(),
+            network: Default::default(),
+            extra: Default::default(),
+            extensions: Default::default(),
+        }
+    }
+}
+
+impl PartialEq for Setting {
+    fn eq(&self, other: &Self) -> bool {
+        self.db_url == other.db_url
+            && self.thread == other.thread
+            && self.network == other.network
+            && self.extra == other.extra
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct SettingWrapper {
+    inner: Arc<RwLock<Setting>>,
+    watcher: Option<Arc<RecommendedWatcher>>,
+}
+
+impl Deref for SettingWrapper {
+    type Target = Arc<RwLock<Setting>>;
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl From<Setting> for SettingWrapper {
+    fn from(setting: Setting) -> Self {
+        Self {
+            inner: Arc::new(RwLock::new(setting)),
+            watcher: None,
+        }
+    }
+}
+
+impl SettingWrapper {
+    /// reload setting from file
+    pub fn reload<P: AsRef<Path>>(&self, file: P, env_prefix: Option<String>) -> Result<()> {
+        let setting = Setting::read(&file, env_prefix)?;
+        {
+            let mut w = self.write();
+            *w = setting;
+        }
+        Ok(())
+    }
+
+    /// config from file and watch file update then reload
+    pub fn watch<P: AsRef<Path>, F: Fn(&SettingWrapper) + Send + 'static>(
+        file: P,
+        env_prefix: Option<String>,
+        f: F,
+    ) -> Result<Self> {
+        let mut setting: SettingWrapper = Setting::read(&file, env_prefix.clone())?.into();
+        let c_setting = setting.clone();
+
+        // let file = current_dir()?.join(file.as_ref());
+        // symbolic links
+        let file = fs::canonicalize(file.as_ref())?;
+        let c_file = file.clone();
+
+        // support vim editor. watch dir
+        // https://docs.rs/notify/latest/notify/#editor-behaviour
+        // https://github.com/notify-rs/notify/issues/113#issuecomment-281836995
+
+        let dir = file
+            .parent()
+            .ok_or_else(|| Error::Message("failed to get config dir".to_owned()))?;
+
+        let mut watcher = RecommendedWatcher::new(
+            move |result: Result<Event, notify::Error>| match result {
+                Ok(event) => {
+                    // println!("event: {:?}", event);
+                    if matches!(event.kind, EventKind::Modify(ModifyKind::Data(_)))
+                        && event.paths.contains(&c_file)
+                    {
+                        match c_setting.reload(&c_file, env_prefix.clone()) {
+                            Ok(_) => {
+                                info!("Reload config success {:?}", c_file);
+                                info!("{:?}", c_setting.read());
+                                f(&c_setting);
+                            }
+                            Err(e) => {
+                                error!(
+                                    error = e.to_string(),
+                                    "failed to reload config {:?}", c_file
+                                );
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    error!(error = e.to_string(), "failed to watch file {:?}", c_file);
+                }
+            },
+            notify::Config::default(),
+        )?;
+
+        watcher.watch(dir, RecursiveMode::NonRecursive)?;
+        // save watcher
+        setting.watcher = Some(Arc::new(watcher));
+
+        Ok(setting)
+    }
+}
+
+impl Setting {
+    /// get extension setting as json from extra
+    pub fn get_extra_json(&self, key: &str) -> Option<String> {
+        self.extra
+            .get(key)
+            .and_then(|h| serde_json::to_string(h).ok())
+        // .map(|h| serde_json::to_string(h).ok())
+        // .flatten()
+    }
+
+    /// Parse extension setting from extra json string.
+    pub fn parse_extension<T: DeserializeOwned + Default>(&self, key: &str) -> T {
+        self.get_extra_json(key)
+            .and_then(|s| {
+                let r = serde_json::from_str::<T>(&s);
+                if let Err(err) = &r {
+                    error!(error = err.to_string(), "failed to parse {:?} setting", key);
+                }
+                r.ok()
+            })
+            .unwrap_or_default()
+    }
+
+    /// save extension setting
+    pub fn set_extension<T: Send + Sync + 'static>(&mut self, val: T) {
+        self.extensions.insert(TypeId::of::<T>(), Box::new(val));
+    }
+
+    /// get extension setting
+    pub fn get_extension<T: 'static>(&self) -> Option<&T> {
+        self.extensions
+            .get(&TypeId::of::<T>())
+            .and_then(|boxed| boxed.downcast_ref())
+    }
+
+    /// read config from file and env
+    pub fn read<P: AsRef<Path>>(file: P, env_prefix: Option<String>) -> Result<Self> {
+        let builder = Config::builder();
+        let mut config = builder
+            // Use serde default feature, ignore the following code
+            // // use defaults
+            // .add_source(Config::try_from(&Self::default())?)
+            // override with file contents
+            .add_source(File::with_name(file.as_ref().to_str().unwrap()));
+        if let Some(prefix) = env_prefix {
+            config = config.add_source(
+                Environment::with_prefix(&prefix)
+                    .prefix_separator("_")
+                    .separator("__"),
+            );
+        }
+
+        let config = config.build()?;
+        let setting: Setting = config.try_deserialize()?;
+        Ok(setting)
+    }
+
+    /// read config from env
+    pub fn from_env(env_prefix: String) -> Result<Self> {
+        let mut config = Config::builder();
+        config = config.add_source(
+            Environment::with_prefix(&env_prefix)
+                .prefix_separator("_")
+                .separator("__"),
+        );
+
+        let config = config.build()?;
+        let setting: Setting = config.try_deserialize()?;
+        Ok(setting)
+    }
+
+    /// config from str
+    pub fn from_str(s: &str, format: FileFormat) -> Result<Self> {
+        let builder = Config::builder();
+        let config = builder.add_source(File::from_str(s, format)).build()?;
+        let setting: Setting = config.try_deserialize()?;
+        Ok(setting)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use anyhow::Result;
+    use config::FileFormat;
+    use std::{fs, thread::sleep, time::Duration};
+    use tempfile::Builder;
+
+    #[test]
+    fn der() -> Result<()> {
+        let json = r#"{
+            "lightning": "cln",
+            "network": {"port": 1},
+            "thread": {"http": 1}
+        }"#;
+
+        let mut def = Setting::default();
+        def.network.port = 1;
+        def.thread.http = 1;
+        def.lightning = Lightning::Cln;
+
+        let s2 = serde_json::from_str::<Setting>(json)?;
+        let s1: Setting = Setting::from_str(json, FileFormat::Json)?;
+
+        assert_eq!(def, s1);
+        assert_eq!(def, s2);
+
+        Ok(())
+    }
+
+    #[test]
+    fn read() -> Result<()> {
+        let setting = Setting::default();
+        assert_eq!(setting.network.host, "127.0.0.1");
+
+        let file = Builder::new()
+            .prefix("satsbox-config-test-read")
+            .suffix(".toml")
+            .rand_bytes(0)
+            .tempfile()?;
+
+        let setting = Setting::read(&file, None)?;
+        assert_eq!(setting.network.host, "127.0.0.1");
+        fs::write(
+            &file,
+            r#"
+        [network]
+        host = "127.0.0.2"
+        "#,
+        )?;
+
+        temp_env::with_vars(
+            [
+                ("ST_network.port", Some("1")),
+                ("ST_network__host", Some("127.0.0.3")),
+            ],
+            || {
+                let setting = Setting::read(&file, Some("ST".to_owned())).unwrap();
+                assert_eq!(setting.network.host, "127.0.0.3".to_string());
+                assert_eq!(setting.network.port, 1);
+            },
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn watch() -> Result<()> {
+        let file = Builder::new()
+            .prefix("satsbox-config-test-watch")
+            .suffix(".toml")
+            .tempfile()?;
+
+        let setting = SettingWrapper::watch(&file, None, |_s| {})?;
+        {
+            let r = setting.read();
+            assert_eq!(r.network.port, 8080);
+        }
+
+        fs::write(
+            &file,
+            r#"[network]
+    port = 1
+    "#,
+        )?;
+        sleep(Duration::from_millis(300));
+        // println!("read {:?} {:?}", setting.read(), file);
+        {
+            let r = setting.read();
+            assert_eq!(r.network.port, 1);
+        }
+        Ok(())
+    }
+}

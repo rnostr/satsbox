@@ -1,4 +1,4 @@
-//! lnd grpc api
+//! lnd v0.16.4-beta grpc api
 
 use crate::{lightning::*, Result};
 use hyper::{
@@ -43,6 +43,7 @@ pub type SignerClient = signrpc::signer_client::SignerClient<MacaroonChannel>;
 pub type VersionerClient = verrpc::versioner_client::VersionerClient<MacaroonChannel>;
 pub type WalletKitClient = walletrpc::wallet_kit_client::WalletKitClient<MacaroonChannel>;
 
+#[derive(Clone, Debug)]
 pub struct Lnd {
     lightning: LightningClient,
     wallet: WalletKitClient,
@@ -123,7 +124,7 @@ impl Lnd {
 type TlsClient = Client<HttpsConnector<HttpConnector>, BoxBody>;
 const ALPN_H2_WIRE: &[u8] = b"\x02h2";
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct LndChannel {
     uri: Uri,
     client: TlsClient,
@@ -192,9 +193,10 @@ impl tonic::service::Interceptor for MacaroonInterceptor {
 
 #[tonic::async_trait]
 impl Lightning for Lnd {
-    async fn get_info(&mut self) -> Result<Info> {
+    async fn get_info(&self) -> Result<Info> {
         let info = self
-            .lightning()
+            .lightning
+            .clone()
             .get_info(lnrpc::GetInfoRequest {})
             .await?
             .into_inner();

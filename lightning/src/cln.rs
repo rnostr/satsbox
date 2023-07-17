@@ -10,6 +10,7 @@ pub mod cln {
 }
 use cln::{node_client::NodeClient, *};
 
+#[derive(Clone, Debug)]
 pub struct Cln {
     node: NodeClient<Channel>,
 }
@@ -68,8 +69,13 @@ impl Cln {
 
 #[tonic::async_trait]
 impl Lightning for Cln {
-    async fn get_info(&mut self) -> Result<Info> {
-        let info = self.node.getinfo(GetinfoRequest {}).await?.into_inner();
+    async fn get_info(&self) -> Result<Info> {
+        let info = self
+            .node
+            .clone()
+            .getinfo(GetinfoRequest {})
+            .await?
+            .into_inner();
 
         Ok(Info { id: info.id })
     }

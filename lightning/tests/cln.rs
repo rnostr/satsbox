@@ -4,8 +4,8 @@ use lightning::get_env;
 use lightning_client::Cln;
 
 async fn connect() -> Result<Cln> {
-    let url = get_env("LT_CLN__RPC_URL");
-    let ca = get_env("LT_CLN_CA");
+    let url = get_env("LT_CLN__URL");
+    let ca = get_env("LT_CLN__CA");
     let client = get_env("LT_CLN__CLIENT");
     let client_key = get_env("LT_CLN__CLIENT_KEY");
     Ok(Cln::connect(url, ca, client, client_key).await?)
