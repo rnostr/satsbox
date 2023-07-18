@@ -16,22 +16,27 @@ use tonic::{body::BoxBody, codegen::InterceptedService};
 use tower::Service;
 
 pub mod lnrpc {
+    #![allow(clippy::all)]
     tonic::include_proto!("lnrpc");
 }
 
 pub mod walletrpc {
+    #![allow(clippy::all)]
     tonic::include_proto!("walletrpc");
 }
 
 pub mod signrpc {
+    #![allow(clippy::all)]
     tonic::include_proto!("signrpc");
 }
 
 pub mod verrpc {
+    #![allow(clippy::all)]
     tonic::include_proto!("verrpc");
 }
 
 pub mod peersrpc {
+    #![allow(clippy::all)]
     tonic::include_proto!("peersrpc");
 }
 

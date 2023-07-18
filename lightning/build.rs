@@ -19,6 +19,6 @@ fn main() -> std::io::Result<()> {
         .build_client(true)
         .build_server(false)
         .compile(&cln, &["proto/cln"])?;
-    
+
     Ok(())
 }

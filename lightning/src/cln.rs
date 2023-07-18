@@ -6,6 +6,7 @@ use tokio::fs;
 use tonic::transport::{Certificate, Channel, ClientTlsConfig, Identity};
 
 pub mod cln {
+    #![allow(clippy::all)]
     tonic::include_proto!("cln");
 }
 use cln::{node_client::NodeClient, *};
