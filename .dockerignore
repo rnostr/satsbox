@@ -22,3 +22,4 @@
 /kcov-build/
 
 /data
+satsbox.sqlite

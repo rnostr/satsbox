@@ -12,7 +12,7 @@ impl Service {
     pub fn conn(&self) -> &DbConn {
         &self.conn
     }
-    
+
     pub fn new(lightning: Box<dyn Lightning + Sync + Send>, conn: DbConn) -> Self {
         Self { lightning, conn }
     }

@@ -2,7 +2,7 @@
 name = "satsbox"
 version = "0.1.0"
 description = "Nostr friendly bitcoin lightning custodial wallet service."
-keywords = ["lightning"]
+keywords = ["lightning", "nostr"]
 publish = false
 
 edition.workspace = true
@@ -34,10 +34,12 @@ serde = { version = "1.0.160", features = ["derive"] }
 serde_json = "1.0.96"
 parking_lot = "0.12.1"
 num_cpus = "1.16.0"
+tracing-subscriber = { version = "0.3.17" }
+clap = { version = "4.2.7", features = ["derive"] }
+dotenvy = "0.15.7"
 
 [dev-dependencies]
 anyhow = "1.0.71"
-dotenvy = "0.15.7"
 tempfile = "3.4.0"
 temp-env = "0.3.4"
 actix-rt = "2.8.0"

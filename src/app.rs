@@ -102,17 +102,10 @@ pub fn create_web_app(
         .configure(route::init)
 }
 
-#[actix_web::main]
-pub async fn start<P: AsRef<Path>>(
-    setting_path: Option<P>,
-    setting_env_prefix: Option<String>,
-) -> Result<()> {
-    let state = AppState::create(setting_path, setting_env_prefix).await?;
+pub async fn start(state: AppState) -> Result<()> {
     let data = web::Data::new(state);
     let c_data = data.clone();
-
     let server = HttpServer::new(move || create_web_app(c_data.clone()));
-
     let num = if data.setting.thread.http == 0 {
         num_cpus::get()
     } else {
@@ -120,6 +113,7 @@ pub async fn start<P: AsRef<Path>>(
     };
     let host = data.setting.network.host.clone();
     let port = data.setting.network.port;
+    info!("Start http server {}:{}", host, port);
     server.workers(num).bind((host, port))?.run().await?;
     Ok(())
 }
