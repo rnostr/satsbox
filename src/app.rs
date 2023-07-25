@@ -7,7 +7,7 @@ use actix_web::{
     middleware, web, App as WebApp, HttpServer,
 };
 use lightning_client::{Cln, Lightning, Lnd};
-use sea_orm::Database;
+use sea_orm::{ConnectOptions, Database};
 use tracing::info;
 
 pub mod route {
@@ -78,7 +78,8 @@ impl AppState {
             }
         };
 
-        let conn = Database::connect(&setting.db_url).await?;
+        let options = ConnectOptions::from(&setting.db_url);
+        let conn = Database::connect(options).await?;
         let service = Service::new(lightning, conn);
 
         Ok(Self { service, setting })
