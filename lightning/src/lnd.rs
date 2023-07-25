@@ -208,6 +208,58 @@ impl Lightning for Lnd {
 
         Ok(Info {
             id: hex::decode(info.identity_pubkey)?,
+            alias: info.alias,
+            color: info.color,
+        })
+    }
+
+    async fn create_invoice(
+        &self,
+        memo: String,
+        msats: u64,
+        preimage: Option<Vec<u8>>,
+        expiry: Option<u64>,
+    ) -> Result<Invoice> {
+        let data = self
+            .lightning
+            .clone()
+            .add_invoice(lnrpc::Invoice {
+                memo,
+                r_preimage: preimage.unwrap_or_default(),
+                value_msat: msats as i64,
+                expiry: expiry.unwrap_or_default() as i64,
+                ..Default::default()
+            })
+            .await?
+            .into_inner();
+
+        // Ok(Invoice::from(
+        //     data.add_index.to_string(),
+        //     data.payment_request,
+        // )?)
+
+        let id = data.add_index.to_string();
+        let bolt11 = data.payment_request;
+
+        let data = self
+            .lightning
+            .clone()
+            .decode_pay_req(lnrpc::PayReqString {
+                pay_req: bolt11.clone(),
+            })
+            .await?
+            .into_inner();
+        Ok(Invoice {
+            id,
+            bolt11,
+            payee: hex::decode(data.destination)?,
+            payment_hash: hex::decode(data.payment_hash)?,
+            payment_secret: data.payment_addr,
+            description: data.description,
+            amount: data.num_msat as u64,
+            expiry: data.expiry as u64,
+            created_at: data.timestamp as u64,
+            cltv_expiry: data.cltv_expiry as u64,
         })
     }
 }

@@ -1,6 +1,7 @@
 //! cln v23.05.2 grpc api
 
-use crate::{lightning::*, Result};
+use crate::{lightning::*, Error, Result};
+use rand::RngCore;
 use std::path::Path;
 use tokio::fs;
 use tonic::transport::{Certificate, Channel, ClientTlsConfig, Identity};
@@ -68,6 +69,27 @@ impl Cln {
     }
 }
 
+fn amount_or_any(msat: u64) -> Option<AmountOrAny> {
+    Some(AmountOrAny {
+        value: Some(amount_or_any::Value::Amount(amount(msat))),
+    })
+}
+// fn amount_or_all(msat: u64) -> Option<AmountOrAll> {
+//     Some(AmountOrAll {
+//         value: Some(amount_or_all::Value::Amount(amount(msat))),
+//     })
+// }
+
+fn amount(msat: u64) -> Amount {
+    Amount { msat }
+}
+
+fn rand_id() -> String {
+    let mut store_key_bytes = [0u8; 16];
+    rand::thread_rng().fill_bytes(&mut store_key_bytes);
+    hex::encode(store_key_bytes)
+}
+
 #[tonic::async_trait]
 impl Lightning for Cln {
     async fn get_info(&self) -> Result<Info> {
@@ -78,6 +100,64 @@ impl Lightning for Cln {
             .await?
             .into_inner();
 
-        Ok(Info { id: info.id })
+        Ok(Info {
+            id: info.id,
+            color: String::from_utf8(info.color).unwrap_or_default(),
+            alias: info.alias.unwrap_or_default(),
+        })
+    }
+
+    async fn create_invoice(
+        &self,
+        memo: String,
+        msats: u64,
+        preimage: Option<Vec<u8>>,
+        expiry: Option<u64>,
+    ) -> Result<Invoice> {
+        let id = rand_id();
+        let data = self
+            .node
+            .clone()
+            .invoice(InvoiceRequest {
+                amount_msat: amount_or_any(msats),
+                preimage,
+                description: memo,
+                expiry,
+                label: id.clone(),
+                ..Default::default()
+            })
+            .await?
+            .into_inner();
+
+        // Ok(Invoice::from(id, data.bolt11)?)
+
+        let bolt11 = data.bolt11;
+        let data = self
+            .node
+            .clone()
+            .decode_pay(DecodepayRequest {
+                bolt11: bolt11.clone(),
+                ..Default::default()
+            })
+            .await?
+            .into_inner();
+
+        Ok(Invoice {
+            id,
+            bolt11,
+            payee: data.payee,
+            payment_hash: data.payment_hash,
+            payment_secret: data
+                .payment_secret
+                .ok_or_else(|| Error::Invalid("missing payee".to_owned()))?,
+            description: data.description.unwrap_or_default(),
+            amount: data
+                .amount_msat
+                .ok_or_else(|| Error::Invalid("missing amount".to_owned()))?
+                .msat,
+            expiry: data.expiry,
+            created_at: data.created_at,
+            cltv_expiry: data.min_final_cltv_expiry as u64,
+        })
     }
 }

@@ -12,6 +12,21 @@ pub enum Error {
     TonicStatus(#[from] tonic::Status),
     #[error(transparent)]
     OpensslErrorStack(#[from] openssl::error::ErrorStack),
+    #[error(transparent)]
+    Bolt11ParseError(#[from] lightning_invoice::Bolt11ParseError),
+    #[error("invalid: {0}")]
+    Invalid(String),
+    #[error("{0}")]
+    Message(String),
+}
+
+impl Error {
+    pub fn from<E>(cause: E) -> Self
+    where
+        E: std::error::Error,
+    {
+        Self::Message(cause.to_string())
+    }
 }
 
 pub type Result<T, E = Error> = core::result::Result<T, E>;

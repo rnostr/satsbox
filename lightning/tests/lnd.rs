@@ -23,3 +23,4 @@ macro_rules! test_method {
 }
 
 test_method!(get_info);
+test_method!(create_invoice);

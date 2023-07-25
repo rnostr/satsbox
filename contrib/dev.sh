@@ -108,6 +108,7 @@ connect() {
 open() {
   local lndid=$(_trace $LND_CLI getinfo | grep identity_pubkey | cut -d '"' -f4)
   _trace $CLN_CLI fundchannel "$lndid" 1000000 > /dev/null
+  #_trace $LND_CLI openchannel "$clnid" 1000000 > /dev/null
   gen_blocks 6
   sleep 1
 }
@@ -115,8 +116,12 @@ open() {
 # pay invoice
 pay() {
   local payment=$(_trace $LND_CLI addinvoice 1000 | grep payment_request | cut -d '"' -f4)
+  # local payment=$(_trace $CLN_CLI invoice 1000 | grep bolt11 | cut -d '"' -f4)
   _log "payment: $payment"
   _trace $CLN_CLI pay "$payment" #> /dev/null
+  # _trace $CLN_CLI listpays
+  # _trace $LND_CLI lnd-cli sendpayment -f --pay_req "$payment" #> /dev/null
+  # _trace $LND_CLI listpayments
 }
 
 # cmdline options
