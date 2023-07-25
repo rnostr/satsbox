@@ -1,6 +1,6 @@
 //! lnd v0.16.4-beta grpc api
 
-use crate::{lightning::*, Result};
+use crate::{lightning::*, Error, Result};
 use hyper::{
     client::{HttpConnector, ResponseFuture},
     Body, Client, Request, Response, Uri,
@@ -10,9 +10,9 @@ use openssl::{
     ssl::{SslConnector, SslMethod},
     x509::X509,
 };
-use std::{path::Path, task::Poll};
+use std::{path::Path, task::Poll, time::Duration};
 use tokio::fs;
-use tonic::{body::BoxBody, codegen::InterceptedService};
+use tonic::{body::BoxBody, codegen::InterceptedService, Code};
 use tower::Service;
 
 pub mod lnrpc {
@@ -40,6 +40,11 @@ pub mod peersrpc {
     tonic::include_proto!("peersrpc");
 }
 
+pub mod routerrpc {
+    #![allow(clippy::all)]
+    tonic::include_proto!("routerrpc");
+}
+
 pub type MacaroonChannel = InterceptedService<LndChannel, MacaroonInterceptor>;
 
 pub type LightningClient = lnrpc::lightning_client::LightningClient<MacaroonChannel>;
@@ -47,6 +52,7 @@ pub type PeersClient = peersrpc::peers_client::PeersClient<MacaroonChannel>;
 pub type SignerClient = signrpc::signer_client::SignerClient<MacaroonChannel>;
 pub type VersionerClient = verrpc::versioner_client::VersionerClient<MacaroonChannel>;
 pub type WalletKitClient = walletrpc::wallet_kit_client::WalletKitClient<MacaroonChannel>;
+pub type RouterClient = routerrpc::router_client::RouterClient<MacaroonChannel>;
 
 #[derive(Clone, Debug)]
 pub struct Lnd {
@@ -55,6 +61,7 @@ pub struct Lnd {
     signer: SignerClient,
     peers: PeersClient,
     version: VersionerClient,
+    router: RouterClient,
 }
 
 impl Lnd {
@@ -81,6 +88,11 @@ impl Lnd {
     /// Returns the peers client.
     pub fn peers(&mut self) -> &mut PeersClient {
         &mut self.peers
+    }
+
+    /// Returns the router client.
+    pub fn router(&mut self) -> &mut RouterClient {
+        &mut self.router
     }
 
     pub async fn connect<CF, MF>(url: String, cert_file: CF, macaroon_file: MF) -> Result<Self>
@@ -121,7 +133,11 @@ impl Lnd {
                 channel.clone(),
                 interceptor.clone(),
             ),
-            signer: signrpc::signer_client::SignerClient::with_interceptor(channel, interceptor),
+            signer: signrpc::signer_client::SignerClient::with_interceptor(
+                channel.clone(),
+                interceptor.clone(),
+            ),
+            router: routerrpc::router_client::RouterClient::with_interceptor(channel, interceptor),
         })
     }
 }
@@ -233,33 +249,98 @@ impl Lightning for Lnd {
             .await?
             .into_inner();
 
-        // Ok(Invoice::from(
-        //     data.add_index.to_string(),
-        //     data.payment_request,
-        // )?)
+        Ok(Invoice::from(
+            data.add_index.to_string(),
+            data.payment_request,
+        )?)
 
-        let id = data.add_index.to_string();
-        let bolt11 = data.payment_request;
+        // let id = data.add_index.to_string();
+        // let bolt11 = data.payment_request;
 
+        // let data = self
+        //     .lightning
+        //     .clone()
+        //     .decode_pay_req(lnrpc::PayReqString {
+        //         pay_req: bolt11.clone(),
+        //     })
+        //     .await?
+        //     .into_inner();
+        // Ok(Invoice {
+        //     id,
+        //     bolt11,
+        //     payee: hex::decode(data.destination)?,
+        //     payment_hash: hex::decode(data.payment_hash)?,
+        //     payment_secret: data.payment_addr,
+        //     description: data.description,
+        //     amount: data.num_msat as u64,
+        //     expiry: data.expiry as u64,
+        //     created_at: data.timestamp as u64,
+        //     cltv_expiry: data.cltv_expiry as u64,
+        // })
+    }
+
+    async fn pay(&self, bolt11: String) -> Result<Vec<u8>> {
         let data = self
             .lightning
             .clone()
-            .decode_pay_req(lnrpc::PayReqString {
-                pay_req: bolt11.clone(),
+            .send_payment_sync(lnrpc::SendRequest {
+                payment_request: bolt11,
+                ..Default::default()
             })
             .await?
             .into_inner();
-        Ok(Invoice {
-            id,
-            bolt11,
-            payee: hex::decode(data.destination)?,
-            payment_hash: hex::decode(data.payment_hash)?,
-            payment_secret: data.payment_addr,
-            description: data.description,
-            amount: data.num_msat as u64,
-            expiry: data.expiry as u64,
-            created_at: data.timestamp as u64,
-            cltv_expiry: data.cltv_expiry as u64,
-        })
+        Ok(data.payment_hash)
+    }
+
+    async fn lookup_payment(&self, payment_hash: Vec<u8>) -> Result<Payment> {
+        let mut stream = self
+            .router
+            .clone()
+            .track_payment_v2(routerrpc::TrackPaymentRequest {
+                payment_hash: payment_hash.clone(),
+                no_inflight_updates: true,
+            })
+            .await
+            .map_err(|err| {
+                if err.code() == Code::NotFound {
+                    Error::PaymentNotFound
+                } else {
+                    err.into()
+                }
+            })?
+            .into_inner();
+
+        let msg = tokio::time::timeout(Duration::from_secs(2), stream.message()).await;
+        if let Ok(msg) = msg {
+            let msg = msg?;
+            if let Some(payment) = msg {
+                let status = match payment.status() {
+                    lnrpc::payment::PaymentStatus::Unknown => PaymentStatus::Unknown,
+                    lnrpc::payment::PaymentStatus::InFlight => PaymentStatus::InFlight,
+                    lnrpc::payment::PaymentStatus::Succeeded => PaymentStatus::Succeeded,
+                    lnrpc::payment::PaymentStatus::Failed => PaymentStatus::Failed,
+                };
+                Ok(Payment {
+                    id: payment.payment_index.to_string(),
+                    bolt11: payment.payment_request,
+                    payment_hash: hex::decode(payment.payment_hash)?,
+                    payment_preimage: hex::decode(payment.payment_preimage)?,
+                    created_at: Duration::from_nanos(payment.creation_time_ns as u64).as_secs(),
+                    amount: payment.value_msat as u64,
+                    fee: payment.fee_msat as u64,
+                    total: (payment.value_msat + payment.fee_msat) as u64,
+                    status,
+                })
+            } else {
+                Err(Error::Message("missing payment".to_owned()))
+            }
+        } else {
+            // timeout, make payment in flight
+            return Ok(Payment {
+                payment_hash,
+                status: PaymentStatus::InFlight,
+                ..Default::default()
+            });
+        }
     }
 }

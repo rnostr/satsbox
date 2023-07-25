@@ -129,35 +129,82 @@ impl Lightning for Cln {
             .await?
             .into_inner();
 
-        // Ok(Invoice::from(id, data.bolt11)?)
+        Ok(Invoice::from(id, data.bolt11)?)
 
-        let bolt11 = data.bolt11;
+        // let bolt11 = data.bolt11;
+        // let data = self
+        //     .node
+        //     .clone()
+        //     .decode_pay(DecodepayRequest {
+        //         bolt11: bolt11.clone(),
+        //         ..Default::default()
+        //     })
+        //     .await?
+        //     .into_inner();
+
+        // Ok(Invoice {
+        //     id,
+        //     bolt11,
+        //     payee: data.payee,
+        //     payment_hash: data.payment_hash,
+        //     payment_secret: data
+        //         .payment_secret
+        //         .ok_or_else(|| Error::Invalid("missing payee".to_owned()))?,
+        //     description: data.description.unwrap_or_default(),
+        //     amount: data
+        //         .amount_msat
+        //         .ok_or_else(|| Error::Invalid("missing amount".to_owned()))?
+        //         .msat,
+        //     expiry: data.expiry,
+        //     created_at: data.created_at,
+        //     cltv_expiry: data.min_final_cltv_expiry as u64,
+        // })
+    }
+    async fn pay(&self, bolt11: String) -> Result<Vec<u8>> {
         let data = self
             .node
             .clone()
-            .decode_pay(DecodepayRequest {
-                bolt11: bolt11.clone(),
+            .pay(PayRequest {
+                bolt11,
                 ..Default::default()
             })
             .await?
             .into_inner();
+        Ok(data.payment_hash)
+    }
 
-        Ok(Invoice {
-            id,
-            bolt11,
-            payee: data.payee,
-            payment_hash: data.payment_hash,
-            payment_secret: data
-                .payment_secret
-                .ok_or_else(|| Error::Invalid("missing payee".to_owned()))?,
-            description: data.description.unwrap_or_default(),
-            amount: data
-                .amount_msat
-                .ok_or_else(|| Error::Invalid("missing amount".to_owned()))?
-                .msat,
-            expiry: data.expiry,
-            created_at: data.created_at,
-            cltv_expiry: data.min_final_cltv_expiry as u64,
+    async fn lookup_payment(&self, payment_hash: Vec<u8>) -> Result<Payment> {
+        let data = self
+            .node
+            .clone()
+            .list_send_pays(ListsendpaysRequest {
+                payment_hash: Some(payment_hash),
+                ..Default::default()
+            })
+            .await?
+            .into_inner();
+        if data.payments.is_empty() {
+            return Err(Error::PaymentNotFound);
+        }
+        let payment = data.payments[0].clone();
+        let status = match payment.status() {
+            listsendpays_payments::ListsendpaysPaymentsStatus::Complete => PaymentStatus::Succeeded,
+            listsendpays_payments::ListsendpaysPaymentsStatus::Pending => PaymentStatus::InFlight,
+            listsendpays_payments::ListsendpaysPaymentsStatus::Failed => PaymentStatus::Failed,
+        };
+
+        let amount = payment.amount_msat.map(|m| m.msat).unwrap_or_default();
+        let total = payment.amount_sent_msat.map(|m| m.msat).unwrap_or_default();
+        Ok(Payment {
+            status,
+            id: payment.id.to_string(),
+            bolt11: payment.bolt11.unwrap_or_default(),
+            payment_hash: payment.payment_hash,
+            payment_preimage: payment.payment_preimage.unwrap_or_default(),
+            created_at: payment.created_at,
+            amount,
+            fee: total - amount,
+            total,
         })
     }
 }

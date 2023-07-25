@@ -5,6 +5,7 @@ fn main() -> std::io::Result<()> {
         "proto/lnd/lightning.proto",
         "proto/lnd/peersrpc/peers.proto",
         "proto/lnd/verrpc/verrpc.proto",
+        "proto/lnd/routerrpc/router.proto",
     ];
 
     tonic_build::configure()

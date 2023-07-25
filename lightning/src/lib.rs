@@ -18,6 +18,8 @@ pub enum Error {
     Invalid(String),
     #[error("{0}")]
     Message(String),
+    #[error("payment not found")]
+    PaymentNotFound,
 }
 
 impl Error {

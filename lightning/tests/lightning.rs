@@ -20,6 +20,8 @@ pub async fn get_info<L: Lightning>(client: &mut L) -> Result<()> {
 }
 
 pub async fn create_invoice<L: Lightning>(client: &mut L) -> Result<()> {
+    let info = client.get_info().await?;
+
     let image = rand_preimage();
     let expiry = 60 * 10; // 10 minutes
     let amount = 100_000;
@@ -32,6 +34,17 @@ pub async fn create_invoice<L: Lightning>(client: &mut L) -> Result<()> {
     assert_eq!(invoice.amount, amount);
     assert_eq!(invoice.expiry, expiry);
     assert_eq!(invoice.payment_hash, hash.to_byte_array());
+    assert_eq!(invoice.payee, info.id);
 
+    Ok(())
+}
+
+pub async fn track_payment<L: Lightning>(client: &mut L) -> Result<()> {
+    // let data = client
+    //     .lookup_payment(hex::decode(
+    //         "ba36989476bde8b4e11e291c8cf20742573c2953efad62c164005b0c546dbb90",
+    //     )?)
+    //     .await?;
+    // println!("data {:?}", data);
     Ok(())
 }

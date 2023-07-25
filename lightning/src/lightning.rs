@@ -75,10 +75,47 @@ impl Invoice {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, Default)]
+pub struct Payment {
+    pub id: String,
+    pub bolt11: String,
+    #[serde(with = "hex::serde")]
+    pub payment_preimage: Vec<u8>,
+    #[serde(with = "hex::serde")]
+    pub payment_hash: Vec<u8>,
+    /// amount in msats
+    pub amount: u64,
+    /// fee in msats
+    pub fee: u64,
+    /// total send in msats
+    pub total: u64,
+    /// timestamp as a duration since the Unix epoch
+    pub created_at: u64,
+    pub status: PaymentStatus,
+}
+
+#[derive(Copy, Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+#[repr(u8)]
+pub enum PaymentStatus {
+    Unknown = 0,
+    InFlight = 1,
+    Succeeded = 2,
+    Failed = 3,
+}
+
+impl Default for PaymentStatus {
+    fn default() -> Self {
+        Self::Unknown
+    }
+}
+
 /// the lightning trait for multiple backends
 #[tonic::async_trait]
 pub trait Lightning {
+    /// get lightning node info
     async fn get_info(&self) -> Result<Info>;
+    /// create an invoice
     async fn create_invoice(
         &self,
         memo: String,
@@ -86,6 +123,12 @@ pub trait Lightning {
         preimage: Option<Vec<u8>>,
         expiry: Option<u64>,
     ) -> Result<Invoice>;
+
+    /// pay a lightning invoice, return payment hash
+    async fn pay(&self, bolt11: String) -> Result<Vec<u8>>;
+
+    /// lookup payment, The data is unreliable until completion (successed or failed).
+    async fn lookup_payment(&self, payment_hash: Vec<u8>) -> Result<Payment>;
 }
 
 #[cfg(test)]
