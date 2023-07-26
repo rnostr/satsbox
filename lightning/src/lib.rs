@@ -20,6 +20,8 @@ pub enum Error {
     Message(String),
     #[error("payment not found")]
     PaymentNotFound,
+    #[error("invoice not found")]
+    InvoiceNotFound,
 }
 
 impl Error {

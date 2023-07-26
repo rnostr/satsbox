@@ -251,6 +251,7 @@ impl Lightning for Lnd {
 
         Ok(Invoice::from(
             data.add_index.to_string(),
+            InvoiceStatus::Open,
             data.payment_request,
         )?)
 
@@ -279,6 +280,36 @@ impl Lightning for Lnd {
         // })
     }
 
+    async fn lookup_invoice(&self, payment_hash: Vec<u8>) -> Result<Invoice> {
+        let data = self
+            .lightning
+            .clone()
+            .lookup_invoice(lnrpc::PaymentHash {
+                r_hash: payment_hash,
+                ..Default::default()
+            })
+            .await
+            .map_err(|err| {
+                if err.code() == Code::NotFound {
+                    Error::InvoiceNotFound
+                } else {
+                    err.into()
+                }
+            })?
+            .into_inner();
+
+        let status = match data.state() {
+            lnrpc::invoice::InvoiceState::Canceled => InvoiceStatus::Canceled,
+            lnrpc::invoice::InvoiceState::Settled => InvoiceStatus::Paid,
+            _ => InvoiceStatus::Open,
+        };
+        Ok(Invoice::from(
+            data.add_index.to_string(),
+            status,
+            data.payment_request,
+        )?)
+    }
+
     async fn pay(&self, bolt11: String) -> Result<Vec<u8>> {
         let data = self
             .lightning
@@ -289,6 +320,13 @@ impl Lightning for Lnd {
             })
             .await?
             .into_inner();
+
+        // println!("pay {:?}", data);
+        // SendResponse { payment_error: "", payment_preimage: [220,
+        // pay SendResponse { payment_error: "insufficient_balance", payment_preimage: []
+        if data.payment_preimage.is_empty() {
+            return Err(Error::Message(data.payment_error));
+        }
         Ok(data.payment_hash)
     }
 

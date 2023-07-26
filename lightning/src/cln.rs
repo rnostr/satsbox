@@ -129,7 +129,7 @@ impl Lightning for Cln {
             .await?
             .into_inner();
 
-        Ok(Invoice::from(id, data.bolt11)?)
+        Ok(Invoice::from(id, InvoiceStatus::Open, data.bolt11)?)
 
         // let bolt11 = data.bolt11;
         // let data = self
@@ -160,6 +160,35 @@ impl Lightning for Cln {
         //     cltv_expiry: data.min_final_cltv_expiry as u64,
         // })
     }
+
+    async fn lookup_invoice(&self, payment_hash: Vec<u8>) -> Result<Invoice> {
+        let data = self
+            .node
+            .clone()
+            .list_invoices(ListinvoicesRequest {
+                payment_hash: Some(payment_hash),
+                ..Default::default()
+            })
+            .await?
+            .into_inner();
+        if data.invoices.is_empty() {
+            return Err(Error::InvoiceNotFound);
+        }
+        let invoice = data.invoices[0].clone();
+        let status = match invoice.status() {
+            listinvoices_invoices::ListinvoicesInvoicesStatus::Unpaid => InvoiceStatus::Open,
+            listinvoices_invoices::ListinvoicesInvoicesStatus::Paid => InvoiceStatus::Paid,
+            listinvoices_invoices::ListinvoicesInvoicesStatus::Expired => InvoiceStatus::Canceled,
+        };
+        Ok(Invoice::from(
+            invoice.label,
+            status,
+            invoice
+                .bolt11
+                .ok_or_else(|| Error::Invalid("missing bolt11".to_owned()))?,
+        )?)
+    }
+
     async fn pay(&self, bolt11: String) -> Result<Vec<u8>> {
         let data = self
             .node
@@ -170,6 +199,8 @@ impl Lightning for Cln {
             })
             .await?
             .into_inner();
+        // println!("pay {:?}", data);
+        // pay PayResponse { payment_preimage: [172, 241, 137, 129, 56, 79, 183, 54, 165, 125, 87, 193, 242, 114, 162, 235, 204, 238, 111, 92, 73, 235, 160, 106, 9, 7, 17, 27, 245, 94, 24, 236], destination: Some([2, 182, 98, 15, 108, 86, 15, 55, 45, 158, 162, 41, 235, 155, 198, 90, 96, 22, 138, 73, 14, 152, 5, 212, 238, 35, 202, 46, 91, 63, 247, 210, 91]), payment_hash: [67, 161, 103, 205, 182, 212, 83, 15, 204, 106, 68, 75, 62, 230, 156, 191, 29, 243, 143, 173, 1, 216, 111, 95, 24, 207, 157, 212, 16, 181, 9, 228], created_at: 1690340501.474, parts: 1, amount_msat: Some(Amount { msat: 100000 }), amount_sent_msat: Some(Amount { msat: 100000 }), warning_partial_completion: None, status: Complete }
         Ok(data.payment_hash)
     }
 
