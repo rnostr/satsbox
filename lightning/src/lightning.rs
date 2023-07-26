@@ -141,7 +141,9 @@ pub trait Lightning {
         expiry: Option<u64>,
     ) -> Result<Invoice>;
 
-    /// pay a lightning invoice, return payment hash, need check payment status by `lookup_payment` if error
+    /// pay a lightning invoice, return payment hash,
+    /// need check payment status by `lookup_payment` if error
+    /// pay faild if lookup payment [`Error::PaymentNotFound`]
     async fn pay(&self, bolt11: String) -> Result<Vec<u8>>;
 
     /// lookup payment, The data is unreliable until completion (successed or failed).
