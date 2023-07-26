@@ -13,7 +13,7 @@ use openssl::{
 use std::{path::Path, task::Poll, time::Duration};
 use tokio::fs;
 use tonic::{body::BoxBody, codegen::InterceptedService, Code};
-use tower::Service;
+use tower::{timeout::TimeoutLayer, Service, ServiceBuilder};
 
 pub mod lnrpc {
     #![allow(clippy::all)]
@@ -95,17 +95,27 @@ impl Lnd {
         &mut self.router
     }
 
-    pub async fn connect<CF, MF>(url: String, cert_file: CF, macaroon_file: MF) -> Result<Self>
+    pub async fn connect<CF, MF>(
+        url: String,
+        cert_file: CF,
+        macaroon_file: MF,
+        timeout: Option<Duration>,
+    ) -> Result<Self>
     where
         CF: AsRef<Path>,
         MF: AsRef<Path>,
     {
         let cert = fs::read(cert_file.as_ref()).await?;
         let macaroon = fs::read(macaroon_file.as_ref()).await?;
-        Self::connect2(url, cert, macaroon).await
+        Self::connect2(url, cert, macaroon, timeout).await
     }
 
-    pub async fn connect2<CF, MF>(url: String, cert: CF, macaroon: MF) -> Result<Self>
+    pub async fn connect2<CF, MF>(
+        url: String,
+        cert: CF,
+        macaroon: MF,
+        timeout: Option<Duration>,
+    ) -> Result<Self>
     where
         CF: AsRef<[u8]>,
         MF: AsRef<[u8]>,
@@ -114,7 +124,7 @@ impl Lnd {
         let interceptor = MacaroonInterceptor {
             macaroon: hex::encode(macaroon.as_ref()),
         };
-        let channel = LndChannel::new(cert.as_ref(), uri).await?;
+        let channel = LndChannel::new(cert.as_ref(), uri, timeout).await?;
 
         Ok(Self {
             lightning: lnrpc::lightning_client::LightningClient::with_interceptor(
@@ -142,7 +152,10 @@ impl Lnd {
     }
 }
 
-type TlsClient = Client<HttpsConnector<HttpConnector>, BoxBody>;
+type TlsClient = Client<
+    HttpsConnector<tower::util::Either<tower::timeout::Timeout<HttpConnector>, HttpConnector>>,
+    BoxBody,
+>;
 const ALPN_H2_WIRE: &[u8] = b"\x02h2";
 
 #[derive(Clone, Debug)]
@@ -152,15 +165,19 @@ pub struct LndChannel {
 }
 
 impl LndChannel {
-    pub async fn new(pem: &[u8], uri: Uri) -> Result<Self> {
+    pub async fn new(pem: &[u8], uri: Uri, timeout: Option<Duration>) -> Result<Self> {
         let mut http = HttpConnector::new();
         http.enforce_http(false);
 
+        let connector = ServiceBuilder::new()
+            .option_layer(timeout.map(|t| TimeoutLayer::new(t)))
+            .service(http);
+
         let ca = X509::from_pem(pem)?;
-        let mut connector = SslConnector::builder(SslMethod::tls())?;
-        connector.cert_store_mut().add_cert(ca)?;
-        connector.set_alpn_protos(ALPN_H2_WIRE)?;
-        let mut https = HttpsConnector::with_connector(http, connector)?;
+        let mut ssl = SslConnector::builder(SslMethod::tls())?;
+        ssl.cert_store_mut().add_cert(ca)?;
+        ssl.set_alpn_protos(ALPN_H2_WIRE)?;
+        let mut https = HttpsConnector::with_connector(connector, ssl)?;
         https.set_callback(|c, _| {
             c.set_verify_hostname(false);
             Ok(())

@@ -65,7 +65,7 @@ impl AppState {
                     .lnd
                     .clone()
                     .ok_or_else(|| Error::Message("Need config lnd".to_string()))?;
-                let lightning = Lnd::connect(s.url, s.cert, s.macaroon).await?;
+                let lightning = Lnd::connect(s.url, s.cert, s.macaroon, None).await?;
                 Box::new(lightning)
             }
             crate::setting::Lightning::Cln => {
@@ -73,7 +73,7 @@ impl AppState {
                     .cln
                     .clone()
                     .ok_or_else(|| Error::Message("Need config cln".to_string()))?;
-                let lightning = Cln::connect(s.url, s.ca, s.client, s.client_key).await?;
+                let lightning = Cln::connect(s.url, s.ca, s.client, s.client_key, None).await?;
                 Box::new(lightning)
             }
         };

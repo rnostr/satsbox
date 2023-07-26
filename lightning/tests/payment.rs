@@ -7,8 +7,8 @@ macro_rules! test_method {
         #[tokio::test]
         async fn $t() -> Result<()> {
             dotenvy::dotenv()?;
-            let c1 = util::$c1().await?;
-            let c2 = util::$c2().await?;
+            let c1 = util::$c1(None).await?;
+            let c2 = util::$c2(None).await?;
             lightning::$t(&c1, &c2).await?;
             Ok(())
         }

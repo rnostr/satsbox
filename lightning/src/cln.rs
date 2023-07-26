@@ -2,7 +2,7 @@
 
 use crate::{lightning::*, Error, Result};
 use rand::RngCore;
-use std::path::Path;
+use std::{path::Path, time::Duration};
 use tokio::fs;
 use tonic::transport::{Certificate, Channel, ClientTlsConfig, Identity};
 
@@ -27,6 +27,7 @@ impl Cln {
         ca_file: CF,
         client_file: TF,
         client_key_file: KF,
+        timeout: Option<Duration>,
     ) -> Result<Self>
     where
         CF: AsRef<Path>,
@@ -36,7 +37,7 @@ impl Cln {
         let ca = fs::read(ca_file.as_ref()).await?;
         let client_pem = fs::read(client_file.as_ref()).await?;
         let client_key = fs::read(client_key_file.as_ref()).await?;
-        Self::connect2(url, ca, client_pem, client_key).await
+        Self::connect2(url, ca, client_pem, client_key, timeout).await
     }
 
     pub async fn connect2<CF, TF, KF>(
@@ -44,6 +45,7 @@ impl Cln {
         ca: CF,
         client_pem: TF,
         client_key: KF,
+        timeout: Option<Duration>,
     ) -> Result<Self>
     where
         CF: AsRef<[u8]>,
@@ -58,10 +60,12 @@ impl Cln {
             .identity(ident)
             .ca_certificate(ca);
 
-        let channel = Channel::from_shared(url)?
-            .tls_config(tls)?
-            .connect()
-            .await?;
+        let mut endpoint = Channel::from_shared(url)?;
+        if let Some(timeout) = timeout {
+            endpoint = endpoint.timeout(timeout);
+        }
+
+        let channel = endpoint.tls_config(tls)?.connect().await?;
 
         Ok(Self {
             node: NodeClient::new(channel),

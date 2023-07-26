@@ -12,6 +12,13 @@ pub fn rand_preimage() -> Vec<u8> {
     store_key_bytes.to_vec()
 }
 
+pub async fn timeout<L: Lightning>(client: &L) -> Result<()> {
+    let res = client.get_info().await;
+    println!("res {:?}", res);
+    assert!(res.is_err());
+    Ok(())
+}
+
 pub async fn get_info<L: Lightning>(client: &L) -> Result<()> {
     let info = client.get_info().await?;
     assert_eq!(info.id.len(), 33);
