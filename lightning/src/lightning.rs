@@ -25,7 +25,7 @@ impl Default for InvoiceStatus {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Default)]
 pub struct Invoice {
     pub id: String,
     pub bolt11: String,
@@ -43,10 +43,14 @@ pub struct Invoice {
     pub created_at: u64,
     pub cltv_expiry: u64,
     pub status: InvoiceStatus,
+    /// When this invoice was paid. Measured in seconds since the unix epoch.
+    pub paid_at: u64,
+    /// the amount actually received (could be slightly greater than amount, since clients may overpay), in msats
+    pub paid_amount: u64,
 }
 
 impl Invoice {
-    pub fn from(id: String, status: InvoiceStatus, bolt11: String) -> Result<Self> {
+    pub fn from_bolt11(bolt11: String) -> Result<Self> {
         let inv = bolt11.parse::<SignedRawBolt11Invoice>()?;
         let payee = if let Some(key) = inv.payee_pub_key() {
             key.serialize().to_vec()
@@ -57,10 +61,8 @@ impl Invoice {
                 .to_vec()
         };
         Ok(Self {
-            id,
             bolt11,
             payee,
-            status,
             payment_hash: inv
                 .payment_hash()
                 .ok_or_else(|| Error::Invalid("missing payment_hash".to_owned()))?
@@ -88,6 +90,7 @@ impl Invoice {
                 .description()
                 .map(|d| d.clone().into_inner())
                 .unwrap_or_default(),
+            ..Default::default()
         })
     }
 }
@@ -172,7 +175,7 @@ mod tests {
         //     "payment_hash": "491c7660a05278a1b1433088f57a53d8775d8d12799cb1ccd0b154f3e3e8d6aa",
         //     "signature": "3045022100cef2a6b2965e9c6c818827e9ebb8561d4669bc3bfb0c04d8c176d86b8aecdf5502203d4c6fd67727c623a5a264b4e1beebadfecd23c63180c116f5507677247ae213"
         //  }
-        let inv = Invoice::from("1".to_owned(), InvoiceStatus::Open, "lnbcrt100n1pjthklwpp5fyw8vc9q2fu2rv2rxzy027jnmpm4mrgj0xwtrnxsk9208clg664qdqqcqzzsxqyz5vqsp5yu90phyrcn5vy60dltxtjukzqvcs3zgtzlucvxezjhwdaqt5xwgq9qyyssqeme2dv5kt6wxeqvgyl57hwzkr4rxn0pmlvxqfkxpwmvxhzhvma2n6nr06emj033r5k3xfd8phm46mlkdy0rrrqxpzm64qanhy3awyycpw4rz5g".to_owned())?;
+        let inv = Invoice::from_bolt11("lnbcrt100n1pjthklwpp5fyw8vc9q2fu2rv2rxzy027jnmpm4mrgj0xwtrnxsk9208clg664qdqqcqzzsxqyz5vqsp5yu90phyrcn5vy60dltxtjukzqvcs3zgtzlucvxezjhwdaqt5xwgq9qyyssqeme2dv5kt6wxeqvgyl57hwzkr4rxn0pmlvxqfkxpwmvxhzhvma2n6nr06emj033r5k3xfd8phm46mlkdy0rrrqxpzm64qanhy3awyycpw4rz5g".to_owned())?;
         assert_eq!(inv.created_at, 1690033134);
         assert_eq!(inv.expiry, 86400);
         assert_eq!(

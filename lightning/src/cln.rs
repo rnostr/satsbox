@@ -129,7 +129,10 @@ impl Lightning for Cln {
             .await?
             .into_inner();
 
-        Ok(Invoice::from(id, InvoiceStatus::Open, data.bolt11)?)
+        let mut invoice = Invoice::from_bolt11(data.bolt11)?;
+        invoice.id = id;
+        invoice.status = InvoiceStatus::Open;
+        Ok(invoice)
 
         // let bolt11 = data.bolt11;
         // let data = self
@@ -174,19 +177,22 @@ impl Lightning for Cln {
         if data.invoices.is_empty() {
             return Err(Error::InvoiceNotFound);
         }
-        let invoice = data.invoices[0].clone();
-        let status = match invoice.status() {
+        let inv = data.invoices[0].clone();
+        let status = match inv.status() {
             listinvoices_invoices::ListinvoicesInvoicesStatus::Unpaid => InvoiceStatus::Open,
             listinvoices_invoices::ListinvoicesInvoicesStatus::Paid => InvoiceStatus::Paid,
             listinvoices_invoices::ListinvoicesInvoicesStatus::Expired => InvoiceStatus::Canceled,
         };
-        Ok(Invoice::from(
-            invoice.label,
-            status,
-            invoice
-                .bolt11
+
+        let mut invoice = Invoice::from_bolt11(
+            inv.bolt11
                 .ok_or_else(|| Error::Invalid("missing bolt11".to_owned()))?,
-        )?)
+        )?;
+        invoice.id = inv.label;
+        invoice.status = status;
+        invoice.paid_at = inv.paid_at.unwrap_or_default();
+        invoice.paid_amount = inv.amount_received_msat.map(|m| m.msat).unwrap_or_default();
+        Ok(invoice)
     }
 
     async fn pay(&self, bolt11: String) -> Result<Vec<u8>> {

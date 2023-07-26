@@ -249,11 +249,10 @@ impl Lightning for Lnd {
             .await?
             .into_inner();
 
-        Ok(Invoice::from(
-            data.add_index.to_string(),
-            InvoiceStatus::Open,
-            data.payment_request,
-        )?)
+        let mut invoice = Invoice::from_bolt11(data.payment_request)?;
+        invoice.id = data.add_index.to_string();
+        invoice.status = InvoiceStatus::Open;
+        Ok(invoice)
 
         // let id = data.add_index.to_string();
         // let bolt11 = data.payment_request;
@@ -303,11 +302,13 @@ impl Lightning for Lnd {
             lnrpc::invoice::InvoiceState::Settled => InvoiceStatus::Paid,
             _ => InvoiceStatus::Open,
         };
-        Ok(Invoice::from(
-            data.add_index.to_string(),
-            status,
-            data.payment_request,
-        )?)
+
+        let mut invoice = Invoice::from_bolt11(data.payment_request)?;
+        invoice.id = data.add_index.to_string();
+        invoice.status = status;
+        invoice.paid_at = data.settle_date as u64;
+        invoice.paid_amount = data.amt_paid_msat as u64;
+        Ok(invoice)
     }
 
     async fn pay(&self, bolt11: String) -> Result<Vec<u8>> {

@@ -53,6 +53,8 @@ pub async fn payment<L1: Lightning, L2: Lightning>(c1: &L1, c2: &L2) -> Result<(
     let inv = c2.lookup_invoice(payment_hash.clone()).await?;
     assert_eq!(inv.status, InvoiceStatus::Open);
     assert_eq!(inv.id, invoice.id);
+    assert_eq!(inv.paid_amount, 0);
+    assert_eq!(inv.paid_at, 0);
 
     // println!("invoice {:?}", inv);
 
@@ -71,6 +73,8 @@ pub async fn payment<L1: Lightning, L2: Lightning>(c1: &L1, c2: &L2) -> Result<(
 
     let inv = c2.lookup_invoice(payment_hash.clone()).await?;
     assert_eq!(inv.status, InvoiceStatus::Paid);
+    assert_eq!(inv.paid_amount, inv.amount);
+    assert!(inv.paid_at >= inv.created_at);
     // println!("invoice {:?}", inv);
     Ok(())
 }
