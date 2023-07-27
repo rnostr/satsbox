@@ -144,6 +144,12 @@ pub trait Lightning {
         expiry: Option<u64>,
     ) -> Result<Invoice>;
 
+    /// lookup invoice
+    async fn lookup_invoice(&self, payment_hash: Vec<u8>) -> Result<Invoice>;
+
+    /// list invoices by creation time
+    async fn list_invoices(&self, from: Option<u64>, to: Option<u64>) -> Result<Vec<Invoice>>;
+
     /// pay a lightning invoice, return payment hash,
     /// need check payment status by `lookup_payment` if error
     /// pay faild if lookup payment [`Error::PaymentNotFound`]
@@ -152,8 +158,8 @@ pub trait Lightning {
     /// lookup payment, The data is unreliable until completion (successed or failed).
     async fn lookup_payment(&self, payment_hash: Vec<u8>) -> Result<Payment>;
 
-    /// lookup invoice
-    async fn lookup_invoice(&self, payment_hash: Vec<u8>) -> Result<Invoice>;
+    /// list payments by creation time
+    async fn list_payments(&self, from: Option<u64>, to: Option<u64>) -> Result<Vec<Payment>>;
 }
 
 #[cfg(test)]

@@ -181,22 +181,25 @@ impl Lightning for Cln {
         if data.invoices.is_empty() {
             return Err(Error::InvoiceNotFound);
         }
-        let inv = data.invoices[0].clone();
-        let status = match inv.status() {
-            listinvoices_invoices::ListinvoicesInvoicesStatus::Unpaid => InvoiceStatus::Open,
-            listinvoices_invoices::ListinvoicesInvoicesStatus::Paid => InvoiceStatus::Paid,
-            listinvoices_invoices::ListinvoicesInvoicesStatus::Expired => InvoiceStatus::Canceled,
-        };
+        map_invoice(data.invoices[0].clone())
+    }
 
-        let mut invoice = Invoice::from_bolt11(
-            inv.bolt11
-                .ok_or_else(|| Error::Invalid("missing bolt11".to_owned()))?,
-        )?;
-        invoice.id = inv.label;
-        invoice.status = status;
-        invoice.paid_at = inv.paid_at.unwrap_or_default();
-        invoice.paid_amount = inv.amount_received_msat.map(|m| m.msat).unwrap_or_default();
-        Ok(invoice)
+    // wait lnd support pagination
+    // https://github.com/ElementsProject/lightning/issues/6348
+    async fn list_invoices(&self, _from: Option<u64>, _to: Option<u64>) -> Result<Vec<Invoice>> {
+        let data = self
+            .node
+            .clone()
+            .list_invoices(ListinvoicesRequest {
+                ..Default::default()
+            })
+            .await?
+            .into_inner();
+        let mut invoices = vec![];
+        for invoice in data.invoices {
+            invoices.push(map_invoice(invoice)?);
+        }
+        Ok(invoices)
     }
 
     async fn pay(&self, bolt11: String) -> Result<Vec<u8>> {
@@ -227,25 +230,60 @@ impl Lightning for Cln {
         if data.payments.is_empty() {
             return Err(Error::PaymentNotFound);
         }
-        let payment = data.payments[0].clone();
-        let status = match payment.status() {
-            listsendpays_payments::ListsendpaysPaymentsStatus::Complete => PaymentStatus::Succeeded,
-            listsendpays_payments::ListsendpaysPaymentsStatus::Pending => PaymentStatus::InFlight,
-            listsendpays_payments::ListsendpaysPaymentsStatus::Failed => PaymentStatus::Failed,
-        };
+        Ok(map_payment(data.payments[0].clone()))
+    }
 
-        let amount = payment.amount_msat.map(|m| m.msat).unwrap_or_default();
-        let total = payment.amount_sent_msat.map(|m| m.msat).unwrap_or_default();
-        Ok(Payment {
-            status,
-            id: payment.id.to_string(),
-            bolt11: payment.bolt11.unwrap_or_default(),
-            payment_hash: payment.payment_hash,
-            payment_preimage: payment.payment_preimage.unwrap_or_default(),
-            created_at: payment.created_at,
-            amount,
-            fee: total - amount,
-            total,
-        })
+    // wait lnd support pagination
+    // https://github.com/ElementsProject/lightning/issues/6348
+    async fn list_payments(&self, _from: Option<u64>, _to: Option<u64>) -> Result<Vec<Payment>> {
+        let data = self
+            .node
+            .clone()
+            .list_send_pays(ListsendpaysRequest {
+                ..Default::default()
+            })
+            .await?
+            .into_inner();
+        Ok(data.payments.into_iter().map(map_payment).collect())
+    }
+}
+
+fn map_invoice(inv: ListinvoicesInvoices) -> Result<Invoice> {
+    let status = match inv.status() {
+        listinvoices_invoices::ListinvoicesInvoicesStatus::Unpaid => InvoiceStatus::Open,
+        listinvoices_invoices::ListinvoicesInvoicesStatus::Paid => InvoiceStatus::Paid,
+        listinvoices_invoices::ListinvoicesInvoicesStatus::Expired => InvoiceStatus::Canceled,
+    };
+
+    let mut invoice = Invoice::from_bolt11(
+        inv.bolt11
+            .ok_or_else(|| Error::Invalid("missing bolt11".to_owned()))?,
+    )?;
+    invoice.id = inv.label;
+    invoice.status = status;
+    invoice.paid_at = inv.paid_at.unwrap_or_default();
+    invoice.paid_amount = inv.amount_received_msat.map(|m| m.msat).unwrap_or_default();
+    Ok(invoice)
+}
+
+fn map_payment(payment: ListsendpaysPayments) -> Payment {
+    let status = match payment.status() {
+        listsendpays_payments::ListsendpaysPaymentsStatus::Complete => PaymentStatus::Succeeded,
+        listsendpays_payments::ListsendpaysPaymentsStatus::Pending => PaymentStatus::InFlight,
+        listsendpays_payments::ListsendpaysPaymentsStatus::Failed => PaymentStatus::Failed,
+    };
+
+    let amount = payment.amount_msat.map(|m| m.msat).unwrap_or_default();
+    let total = payment.amount_sent_msat.map(|m| m.msat).unwrap_or_default();
+    Payment {
+        status,
+        id: payment.id.to_string(),
+        bolt11: payment.bolt11.unwrap_or_default(),
+        payment_hash: payment.payment_hash,
+        payment_preimage: payment.payment_preimage.unwrap_or_default(),
+        created_at: payment.created_at,
+        amount,
+        fee: total - amount,
+        total,
     }
 }

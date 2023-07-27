@@ -14,7 +14,7 @@ pub fn rand_preimage() -> Vec<u8> {
 
 pub async fn timeout<L: Lightning>(client: &L) -> Result<()> {
     let res = client.get_info().await;
-    println!("res {:?}", res);
+    // println!("res {:?}", res);
     assert!(res.is_err());
     Ok(())
 }
@@ -33,16 +33,19 @@ pub async fn create_invoice<L: Lightning>(client: &L) -> Result<()> {
     let expiry = 60 * 10; // 10 minutes
     let msats = 100_000;
     let memo = "test".to_owned();
-    let hash = sha256::Hash::hash(&image);
+    let hash = sha256::Hash::hash(&image).to_byte_array().to_vec();
     let invoice = client
         .create_invoice(memo.clone(), msats, Some(image.clone()), Some(expiry))
         .await?;
     assert_eq!(invoice.description, memo);
     assert_eq!(invoice.amount, msats);
     assert_eq!(invoice.expiry, expiry);
-    assert_eq!(invoice.payment_hash, hash.to_byte_array());
+    assert_eq!(invoice.payment_hash, hash);
     assert_eq!(invoice.payee, info.id);
 
+    let list = client.list_invoices(None, None).await?;
+    let item = list.iter().find(|i| &i.payment_hash == &hash);
+    assert!(item.is_some());
     Ok(())
 }
 
@@ -77,6 +80,9 @@ pub async fn payment<L1: Lightning, L2: Lightning>(c1: &L1, c2: &L2) -> Result<(
     assert_eq!(payment.amount, msats);
     assert!(payment.total >= msats);
     // println!("payment {:?}", payment);
+    let list = c1.list_payments(None, None).await?;
+    let item = list.iter().find(|i| &i.payment_hash == &payment_hash);
+    assert!(item.is_some());
 
     let inv = c2.lookup_invoice(payment_hash.clone()).await?;
     assert_eq!(inv.status, InvoiceStatus::Paid);

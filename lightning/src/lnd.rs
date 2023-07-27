@@ -170,7 +170,7 @@ impl LndChannel {
         http.enforce_http(false);
 
         let connector = ServiceBuilder::new()
-            .option_layer(timeout.map(|t| TimeoutLayer::new(t)))
+            .option_layer(timeout.map(TimeoutLayer::new))
             .service(http);
 
         let ca = X509::from_pem(pem)?;
@@ -314,18 +314,26 @@ impl Lightning for Lnd {
             })?
             .into_inner();
 
-        let status = match data.state() {
-            lnrpc::invoice::InvoiceState::Canceled => InvoiceStatus::Canceled,
-            lnrpc::invoice::InvoiceState::Settled => InvoiceStatus::Paid,
-            _ => InvoiceStatus::Open,
-        };
+        map_invoice(data)
+    }
 
-        let mut invoice = Invoice::from_bolt11(data.payment_request)?;
-        invoice.id = data.add_index.to_string();
-        invoice.status = status;
-        invoice.paid_at = data.settle_date as u64;
-        invoice.paid_amount = data.amt_paid_msat as u64;
-        Ok(invoice)
+    async fn list_invoices(&self, from: Option<u64>, to: Option<u64>) -> Result<Vec<Invoice>> {
+        let data = self
+            .lightning
+            .clone()
+            .list_invoices(lnrpc::ListInvoiceRequest {
+                creation_date_start: from.unwrap_or_default(),
+                creation_date_end: to.unwrap_or_default(),
+                ..Default::default()
+            })
+            .await?
+            .into_inner();
+
+        let mut invoices = vec![];
+        for invoice in data.invoices {
+            invoices.push(map_invoice(invoice)?);
+        }
+        Ok(invoices)
     }
 
     async fn pay(&self, bolt11: String) -> Result<Vec<u8>> {
@@ -370,23 +378,7 @@ impl Lightning for Lnd {
         if let Ok(msg) = msg {
             let msg = msg?;
             if let Some(payment) = msg {
-                let status = match payment.status() {
-                    lnrpc::payment::PaymentStatus::Unknown => PaymentStatus::Unknown,
-                    lnrpc::payment::PaymentStatus::InFlight => PaymentStatus::InFlight,
-                    lnrpc::payment::PaymentStatus::Succeeded => PaymentStatus::Succeeded,
-                    lnrpc::payment::PaymentStatus::Failed => PaymentStatus::Failed,
-                };
-                Ok(Payment {
-                    id: payment.payment_index.to_string(),
-                    bolt11: payment.payment_request,
-                    payment_hash: hex::decode(payment.payment_hash)?,
-                    payment_preimage: hex::decode(payment.payment_preimage)?,
-                    created_at: Duration::from_nanos(payment.creation_time_ns as u64).as_secs(),
-                    amount: payment.value_msat as u64,
-                    fee: payment.fee_msat as u64,
-                    total: (payment.value_msat + payment.fee_msat) as u64,
-                    status,
-                })
+                map_payment(payment)
             } else {
                 Err(Error::Message("missing payment".to_owned()))
             }
@@ -399,4 +391,58 @@ impl Lightning for Lnd {
             });
         }
     }
+
+    async fn list_payments(&self, from: Option<u64>, to: Option<u64>) -> Result<Vec<Payment>> {
+        let data = self
+            .lightning
+            .clone()
+            .list_payments(lnrpc::ListPaymentsRequest {
+                creation_date_start: from.unwrap_or_default(),
+                creation_date_end: to.unwrap_or_default(),
+                ..Default::default()
+            })
+            .await?
+            .into_inner();
+
+        let mut list = vec![];
+        for item in data.payments {
+            list.push(map_payment(item)?);
+        }
+        Ok(list)
+    }
+}
+
+fn map_invoice(data: lnrpc::Invoice) -> Result<Invoice> {
+    let status = match data.state() {
+        lnrpc::invoice::InvoiceState::Canceled => InvoiceStatus::Canceled,
+        lnrpc::invoice::InvoiceState::Settled => InvoiceStatus::Paid,
+        _ => InvoiceStatus::Open,
+    };
+
+    let mut invoice = Invoice::from_bolt11(data.payment_request)?;
+    invoice.id = data.add_index.to_string();
+    invoice.status = status;
+    invoice.paid_at = data.settle_date as u64;
+    invoice.paid_amount = data.amt_paid_msat as u64;
+    Ok(invoice)
+}
+
+fn map_payment(payment: lnrpc::Payment) -> Result<Payment> {
+    let status = match payment.status() {
+        lnrpc::payment::PaymentStatus::Unknown => PaymentStatus::Unknown,
+        lnrpc::payment::PaymentStatus::InFlight => PaymentStatus::InFlight,
+        lnrpc::payment::PaymentStatus::Succeeded => PaymentStatus::Succeeded,
+        lnrpc::payment::PaymentStatus::Failed => PaymentStatus::Failed,
+    };
+    Ok(Payment {
+        id: payment.payment_index.to_string(),
+        bolt11: payment.payment_request,
+        payment_hash: hex::decode(payment.payment_hash)?,
+        payment_preimage: hex::decode(payment.payment_preimage)?,
+        created_at: Duration::from_nanos(payment.creation_time_ns as u64).as_secs(),
+        amount: payment.value_msat as u64,
+        fee: payment.fee_msat as u64,
+        total: (payment.value_msat + payment.fee_msat) as u64,
+        status,
+    })
 }
