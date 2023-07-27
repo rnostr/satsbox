@@ -20,29 +20,116 @@ impl MigrationTrait for Migration {
                             .primary_key(),
                     )
                     .col(
-                        ColumnDef::new(invoice::Column::Destination)
+                        ColumnDef::new(invoice::Column::UserId)
+                            .unsigned()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(invoice::Column::UserPubkey)
+                            .binary_len(32)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(invoice::Column::Payee)
                             .binary_len(33)
                             .not_null(),
                     )
                     .col(
-                        ColumnDef::new(invoice::Column::Amount)
-                            .big_integer()
+                        ColumnDef::new(invoice::Column::Type)
+                            .small_unsigned()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(
+                        ColumnDef::new(invoice::Column::Status)
+                            .small_unsigned()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(
+                        ColumnDef::new(invoice::Column::PaymentHash)
+                            .binary_len(32)
                             .not_null(),
                     )
                     .col(
-                        ColumnDef::new(invoice::Column::Timestamp)
-                            .integer()
+                        ColumnDef::new(invoice::Column::PaymentPreimage)
+                            .binary_len(32)
                             .not_null(),
                     )
-                    .col(ColumnDef::new(invoice::Column::Expiry).integer().null())
-                    .col(ColumnDef::new(invoice::Column::Description).text().null())
-                    .col(ColumnDef::new(invoice::Column::Request).text().not_null())
+                    .col(
+                        ColumnDef::new(invoice::Column::CreatedAt)
+                            .big_unsigned()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(invoice::Column::Expiry)
+                            .big_unsigned()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(invoice::Column::Description)
+                            .text()
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(invoice::Column::Bolt11).text().not_null())
+                    .col(
+                        ColumnDef::new(invoice::Column::Amount)
+                            .big_unsigned()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(invoice::Column::PaidAmount)
+                            .big_unsigned()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(invoice::Column::Fee)
+                            .big_unsigned()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(invoice::Column::Total)
+                            .big_unsigned()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(invoice::Column::PaidAt)
+                            .big_unsigned()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(invoice::Column::LockAmount)
+                            .big_unsigned()
+                            .not_null()
+                            .default(0),
+                    )
                     .to_owned(),
             )
-            .await
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .if_not_exists()
+                    .name("uq_invoice_type_payment_hash")
+                    .col(invoice::Column::Type)
+                    .col(invoice::Column::PaymentHash)
+                    .table(invoice::Entity)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+        Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("uq_invoice_type_payment_hash")
+                    .to_owned(),
+            )
+            .await?;
         manager
             .drop_table(Table::drop().table(invoice::Entity).to_owned())
             .await

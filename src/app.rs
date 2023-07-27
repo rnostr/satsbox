@@ -1,5 +1,3 @@
-use std::path::Path;
-
 use crate::{setting::Setting, Error, Result, Service};
 use actix_web::{
     body::MessageBody,
@@ -8,6 +6,7 @@ use actix_web::{
 };
 use lightning_client::{Cln, Lightning, Lnd};
 use sea_orm::{ConnectOptions, Database};
+use std::{path::Path, time::Duration};
 use tracing::info;
 
 pub mod route {
@@ -59,28 +58,29 @@ impl AppState {
     }
 
     pub async fn from_setting(setting: Setting) -> Result<Self> {
-        let lightning: Box<dyn Lightning + Sync + Send> = match setting.lightning {
+        let timeout = Some(Duration::from_secs(60));
+        let conf: (String, Box<dyn Lightning + Sync + Send>) = match setting.lightning {
             crate::setting::Lightning::Lnd => {
                 let s = setting
                     .lnd
                     .clone()
                     .ok_or_else(|| Error::Message("Need config lnd".to_string()))?;
-                let lightning = Lnd::connect(s.url, s.cert, s.macaroon, None).await?;
-                Box::new(lightning)
+                let lightning = Lnd::connect(s.url, s.cert, s.macaroon, timeout).await?;
+                ("lnd".to_owned(), Box::new(lightning))
             }
             crate::setting::Lightning::Cln => {
                 let s = setting
                     .cln
                     .clone()
                     .ok_or_else(|| Error::Message("Need config cln".to_string()))?;
-                let lightning = Cln::connect(s.url, s.ca, s.client, s.client_key, None).await?;
-                Box::new(lightning)
+                let lightning = Cln::connect(s.url, s.ca, s.client, s.client_key, timeout).await?;
+                ("cln".to_owned(), Box::new(lightning))
             }
         };
 
         let options = ConnectOptions::from(&setting.db_url);
         let conn = Database::connect(options).await?;
-        let service = Service::new(lightning, conn);
+        let service = Service::new(conf.0, conf.1, conn);
 
         Ok(Self { service, setting })
     }

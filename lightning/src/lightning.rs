@@ -2,7 +2,7 @@ use crate::{Error, Result};
 use lightning_invoice::SignedRawBolt11Invoice;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Info {
     #[serde(with = "hex::serde")]
     pub id: Vec<u8>,
@@ -25,7 +25,7 @@ impl Default for InvoiceStatus {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Invoice {
     pub id: String,
     pub bolt11: String,
@@ -95,7 +95,7 @@ impl Invoice {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Payment {
     pub id: String,
     pub bolt11: String,

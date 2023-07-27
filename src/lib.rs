@@ -21,6 +21,8 @@ pub enum Error {
     Json(#[from] serde_json::Error),
     #[error("{0}")]
     Message(String),
+    #[error("{0}")]
+    Str(&'static str),
 }
 
 impl actix_web::ResponseError for Error {}

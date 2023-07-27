@@ -30,12 +30,33 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(0),
                     )
+                    .col(
+                        ColumnDef::new(user::Column::LockAmount)
+                            .big_unsigned()
+                            .not_null()
+                            .default(0),
+                    )
                     .to_owned(),
             )
-            .await
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .if_not_exists()
+                    .name("uq_user_pubkey")
+                    .col(user::Column::Pubkey)
+                    .table(user::Entity)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+        Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_index(Index::drop().name("uq_user_pubkey").to_owned())
+            .await?;
         manager
             .drop_table(Table::drop().table(user::Entity).to_owned())
             .await

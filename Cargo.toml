@@ -37,6 +37,8 @@ num_cpus = "1.16.0"
 tracing-subscriber = { version = "0.3.17" }
 clap = { version = "4.2.7", features = ["derive"] }
 dotenvy = "0.15.7"
+sha2 = "0.10.7"
+rand = "0.8.5"
 
 [dev-dependencies]
 anyhow = "1.0.71"
