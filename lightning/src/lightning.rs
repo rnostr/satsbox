@@ -155,7 +155,7 @@ pub trait Lightning {
     /// pay a lightning invoice, return payment hash,
     /// need check payment status by `lookup_payment` if error
     /// pay faild if lookup payment [`Error::PaymentNotFound`]
-    async fn pay(&self, bolt11: String) -> Result<Vec<u8>>;
+    async fn pay(&self, bolt11: String, max_fee_msat: Option<u64>) -> Result<Vec<u8>>;
 
     /// lookup payment, The data is unreliable until completion (successed or failed).
     async fn lookup_payment(&self, payment_hash: Vec<u8>) -> Result<Payment>;

@@ -336,12 +336,15 @@ impl Lightning for Lnd {
         Ok(invoices)
     }
 
-    async fn pay(&self, bolt11: String) -> Result<Vec<u8>> {
+    async fn pay(&self, bolt11: String, max_fee_msat: Option<u64>) -> Result<Vec<u8>> {
         let data = self
             .lightning
             .clone()
             .send_payment_sync(lnrpc::SendRequest {
                 payment_request: bolt11,
+                fee_limit: max_fee_msat.map(|f| lnrpc::FeeLimit {
+                    limit: Some(lnrpc::fee_limit::Limit::Fixed(f as i64)),
+                }),
                 ..Default::default()
             })
             .await?

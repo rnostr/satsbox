@@ -202,12 +202,13 @@ impl Lightning for Cln {
         Ok(invoices)
     }
 
-    async fn pay(&self, bolt11: String) -> Result<Vec<u8>> {
+    async fn pay(&self, bolt11: String, max_fee_msat: Option<u64>) -> Result<Vec<u8>> {
         let data = self
             .node
             .clone()
             .pay(PayRequest {
                 bolt11,
+                maxfee: max_fee_msat.map(amount),
                 ..Default::default()
             })
             .await?

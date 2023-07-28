@@ -69,7 +69,7 @@ pub async fn payment<L1: Lightning, L2: Lightning>(c1: &L1, c2: &L2) -> Result<(
     // println!("invoice {:?}", inv);
 
     // pay success
-    let hash = c1.pay(invoice.bolt11.clone()).await?;
+    let hash = c1.pay(invoice.bolt11.clone(), None).await?;
     assert_eq!(payment_hash, hash);
 
     // check payment
@@ -110,7 +110,7 @@ pub async fn payment_error<L1: Lightning, L2: Lightning>(c1: &L1, c2: &L2) -> Re
     // println!("invoice {:?}", inv);
 
     // pay failed
-    let res = c1.pay(invoice.bolt11.clone()).await;
+    let res = c1.pay(invoice.bolt11.clone(), None).await;
     assert!(res.is_err());
 
     // check payment
