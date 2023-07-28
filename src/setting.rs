@@ -92,12 +92,35 @@ pub struct Cln {
     pub client_key: PathBuf,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(default)]
+pub struct Fee {
+    /// The fee limit expressed as a percentage of the payment amount. (0-100)
+    pub pay_limit_pct: f32,
+    /// small amounts (<=1k sat) payment max fee.
+    pub small_pay_limit_pct: f32,
+    /// internal pyament fee
+    pub internal_pct: f32,
+}
+
+impl Default for Fee {
+    fn default() -> Self {
+        Self {
+            pay_limit_pct: 2.0,
+            small_pay_limit_pct: 10.0,
+            internal_pct: 0.3,
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Setting {
     /// database url
     /// https://www.sea-ql.org/SeaORM/docs/install-and-config/connection/
     pub db_url: String,
+
+    pub fee: Fee,
 
     pub thread: Thread,
     pub network: Network,
@@ -124,6 +147,7 @@ impl Default for Setting {
             lightning: Default::default(),
             thread: Default::default(),
             network: Default::default(),
+            fee: Default::default(),
             extra: Default::default(),
             extensions: Default::default(),
         }

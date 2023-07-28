@@ -67,6 +67,11 @@ impl MigrationTrait for Migration {
                             .not_null(),
                     )
                     .col(
+                        ColumnDef::new(invoice::Column::ExpiredAt)
+                            .big_unsigned()
+                            .not_null(),
+                    )
+                    .col(
                         ColumnDef::new(invoice::Column::Description)
                             .text()
                             .not_null(),
@@ -102,6 +107,23 @@ impl MigrationTrait for Migration {
                             .big_unsigned()
                             .not_null()
                             .default(0),
+                    )
+                    .col(
+                        ColumnDef::new(invoice::Column::Internal)
+                            .boolean()
+                            .not_null()
+                            .default(false),
+                    )
+                    .col(
+                        ColumnDef::new(invoice::Column::Duplicate)
+                            .boolean()
+                            .not_null()
+                            .default(false),
+                    )
+                    .col(
+                        ColumnDef::new(invoice::Column::ServiceFee)
+                            .big_unsigned()
+                            .not_null(),
                     )
                     .to_owned(),
             )

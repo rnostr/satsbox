@@ -1,4 +1,4 @@
-use crate::{Error, Result};
+use crate::{setting::Fee, Error, Result};
 use entity::{invoice, user};
 use lightning_client::{lightning, Lightning};
 use rand::RngCore;
@@ -7,6 +7,7 @@ use sea_orm::{
     TransactionTrait,
 };
 use sha2::{Digest, Sha256};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 pub fn rand_preimage() -> Vec<u8> {
     let mut store_key_bytes = [0u8; 32];
@@ -45,7 +46,7 @@ impl Service {
     pub async fn get_user(&self, pubkey: Vec<u8>) -> Result<Option<user::Model>> {
         Ok(user::Entity::find()
             .filter(user::Column::Pubkey.eq(pubkey))
-            .one(&self.conn)
+            .one(self.conn())
             .await?)
     }
 
@@ -83,91 +84,213 @@ impl Service {
         if &invoice.payment_hash != &hash {
             return Err(Error::Str("invalid payment hash"));
         }
-        let i = active_model_from_invoice(user, preimage, invoice)
+        let i = create_invoice_active_model(user, preimage, invoice)
             .insert(self.conn())
             .await?;
         Ok(i)
     }
 
-    pub async fn pay(&self, user: &user::Model, bolt11: String) -> Result<invoice::Model> {
+    pub async fn pay(
+        &self,
+        user: &user::Model,
+        bolt11: String,
+        fee: &Fee,
+    ) -> Result<invoice::Model> {
         let inv = lightning::Invoice::from_bolt11(bolt11.clone())?;
+        let info = self.lightning.get_info().await?;
+        if info.id.eq(&inv.payee) {
+            // internal payment
+            internal_pay(&self.conn, user, inv, fee).await
+        } else {
+            // external payment
+            let payment_hash = inv.payment_hash.clone();
 
-        let payment_hash = inv.payment_hash.clone();
-        // todo: cal fee
-        let lock_amount = inv.amount;
+            let amount = inv.amount;
+            let max_fee = if amount > 1000_000 {
+                (amount as f64 * fee.pay_limit_pct as f64 / 100.0).floor() as u64
+            } else {
+                (amount as f64 * fee.small_pay_limit_pct as f64 / 100.0).floor() as u64
+            };
+            let total = amount + max_fee;
+            if user.balance < total {
+                return Err(Error::Str("The balance is insufficient."));
+            }
 
-        let mut invoice = active_model_from_invoice(&user, vec![], inv);
-        // payment
-        invoice.r#type = Set(1);
-        invoice.lock_amount = Set(lock_amount);
+            let mut invoice = create_invoice_active_model(&user, vec![], inv);
+            // payment
+            invoice.r#type = Set(invoice::Type::Payment);
+            invoice.lock_amount = Set(total);
 
-        let txn = self.conn.begin().await?;
-        // lock balance
-        let res = user::Entity::update_many()
-            .col_expr(
-                user::Column::Balance,
-                Expr::col(user::Column::Balance).sub(lock_amount),
-            )
-            .col_expr(
-                user::Column::LockAmount,
-                Expr::col(user::Column::LockAmount).add(lock_amount),
-            )
-            .filter(user::Column::Pubkey.eq(user.pubkey.clone()))
-            .filter(user::Column::Balance.gte(lock_amount))
-            .exec(&txn)
-            .await?;
-        if res.rows_affected != 1 {
-            return Err(Error::Str("The balance is insufficient or locked."));
-        }
+            let txn = self.conn.begin().await?;
+            // lock balance
+            let res = user::Entity::update_many()
+                .col_expr(
+                    user::Column::Balance,
+                    Expr::col(user::Column::Balance).sub(total),
+                )
+                .col_expr(
+                    user::Column::LockAmount,
+                    Expr::col(user::Column::LockAmount).add(total),
+                )
+                .filter(user::Column::Id.eq(user.id))
+                .filter(user::Column::Balance.gte(total))
+                .exec(&txn)
+                .await?;
+            if res.rows_affected != 1 {
+                return Err(Error::Str("The balance is insufficient or locked."));
+            }
 
-        // create payment
-        let model = invoice.insert(&txn).await?;
-        txn.commit().await?;
+            // create payment
+            let model = invoice.insert(&txn).await?;
+            txn.commit().await?;
 
-        // try pay
-        let pay = self.lightning.pay(bolt11).await;
-        let payment = self.lightning.lookup_payment(payment_hash).await;
+            // try pay
+            let pay = self.lightning.pay(bolt11, Some(max_fee)).await;
+            let payment = self.lightning.lookup_payment(payment_hash).await;
 
-        match payment {
-            Ok(p) => {
-                match p.status {
-                    lightning::PaymentStatus::Succeeded => {
-                        pay_success(&self.conn(), p, model).await
-                    }
-                    lightning::PaymentStatus::Failed => {
-                        // failed
-                        pay_failed(self.conn(), model).await?;
-                        Err(pay
-                            .err()
-                            .map(Error::from)
-                            .unwrap_or(Error::Str("pay failed")))
-                    }
-                    _ => {
-                        Err(Error::Str("Payment in progress"))
-                        // will handle by the task.
+            match payment {
+                Ok(p) => {
+                    match p.status {
+                        lightning::PaymentStatus::Succeeded => {
+                            pay_success(&self.conn(), p, model).await
+                        }
+                        lightning::PaymentStatus::Failed => {
+                            // failed
+                            pay_failed(self.conn(), model).await?;
+                            Err(pay
+                                .err()
+                                .map(Error::from)
+                                .unwrap_or(Error::Str("pay failed")))
+                        }
+                        _ => {
+                            Err(Error::Str("Payment in progress"))
+                            // will handle by the task.
+                        }
                     }
                 }
-            }
 
-            Err(lightning_client::Error::PaymentNotFound) => {
-                pay_failed(self.conn(), model).await?;
-                Err(pay
-                    .err()
-                    .map(Error::from)
-                    .unwrap_or(Error::Str("pay failed")))
-                // failed
+                Err(lightning_client::Error::PaymentNotFound) => {
+                    pay_failed(self.conn(), model).await?;
+                    Err(pay
+                        .err()
+                        .map(Error::from)
+                        .unwrap_or(Error::Str("pay failed")))
+                    // failed
+                }
+                // will handle by the task.
+                Err(e) => Err(e.into()),
             }
-            // will handle by the task.
-            Err(e) => Err(e.into()),
         }
     }
+}
+
+fn now() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+async fn internal_pay(
+    conn: &DbConn,
+    user: &user::Model,
+    inv: lightning::Invoice,
+    fee: &Fee,
+) -> Result<invoice::Model> {
+    let payment_hash = inv.payment_hash.clone();
+    let amount = inv.amount;
+    let fee = (amount as f64 * fee.internal_pct as f64 / 100.0).floor() as u64;
+    let total = amount + fee;
+    if user.balance < total {
+        return Err(Error::Str("The balance is insufficient."));
+    }
+
+    let payee_inv = invoice::Entity::find()
+        .filter(invoice::Column::PaymentHash.eq(payment_hash.clone()))
+        .filter(invoice::Column::Type.eq(invoice::Type::Invoice))
+        .one(conn)
+        .await?
+        .ok_or(Error::Str("Can't find payee invoice"))?;
+
+    if payee_inv.status != invoice::Status::Unpaid {
+        return Err(Error::Str("The invoice is closed."));
+    }
+
+    let time = now();
+    let mut payment_model =
+        create_invoice_active_model(&user, payee_inv.payment_preimage.clone(), inv);
+    // payment
+    payment_model.r#type = Set(invoice::Type::Payment);
+    payment_model.lock_amount = Set(0);
+    payment_model.status = Set(invoice::Status::Paid);
+    payment_model.amount = Set(amount);
+    payment_model.paid_amount = Set(amount);
+    payment_model.fee = Set(fee);
+    payment_model.total = Set(total);
+    payment_model.paid_at = Set(time);
+
+    let payee_update = invoice::ActiveModel {
+        status: Set(invoice::Status::Paid),
+        amount: Set(amount),
+        paid_amount: Set(amount),
+        paid_at: Set(time),
+        ..Default::default()
+    };
+
+    // exec pay
+    let txn = conn.begin().await?;
+    // update payee invoice status
+    let res = invoice::Entity::update_many()
+        .set(payee_update)
+        .filter(invoice::Column::Id.eq(payee_inv.id))
+        .filter(invoice::Column::Status.eq(invoice::Status::Unpaid))
+        .exec(&txn)
+        .await?;
+    if res.rows_affected != 1 {
+        return Err(Error::Str(
+            "Update invoice failed, It's probably already been paid.",
+        ));
+    }
+
+    let payment = payment_model.insert(&txn).await?;
+
+    // Decrease payer balances
+    let res = user::Entity::update_many()
+        .col_expr(
+            user::Column::Balance,
+            Expr::col(user::Column::Balance).sub(total),
+        )
+        .filter(user::Column::Id.eq(user.id))
+        .filter(user::Column::Balance.gte(total))
+        .exec(&txn)
+        .await?;
+    if res.rows_affected != 1 {
+        return Err(Error::Str("The balance is insufficient or locked."));
+    }
+
+    // Increase payee balance
+
+    let res = user::Entity::update_many()
+        .col_expr(
+            user::Column::Balance,
+            Expr::col(user::Column::Balance).add(amount),
+        )
+        .filter(user::Column::Id.eq(payee_inv.user_id))
+        .exec(&txn)
+        .await?;
+    if res.rows_affected != 1 {
+        return Err(Error::Str("unknown error. where is the user?"));
+    }
+    txn.commit().await?;
+
+    Ok(payment)
 }
 
 async fn pay_failed(conn: &DbConn, invoice: invoice::Model) -> Result<()> {
     let lock_amount = invoice.lock_amount;
 
     let update = invoice::ActiveModel {
-        status: Set(2),
+        status: Set(invoice::Status::Canceled),
         lock_amount: Set(0),
         ..Default::default()
     };
@@ -177,6 +300,7 @@ async fn pay_failed(conn: &DbConn, invoice: invoice::Model) -> Result<()> {
     let res = invoice::Entity::update_many()
         .set(update)
         .filter(invoice::Column::Id.eq(invoice.id))
+        .filter(invoice::Column::Status.eq(invoice::Status::Unpaid))
         .filter(invoice::Column::LockAmount.eq(lock_amount))
         .exec(&txn)
         .await?;
@@ -192,7 +316,7 @@ async fn pay_failed(conn: &DbConn, invoice: invoice::Model) -> Result<()> {
                 user::Column::LockAmount,
                 Expr::col(user::Column::LockAmount).sub(lock_amount),
             )
-            .filter(user::Column::Pubkey.eq(invoice.user_pubkey.clone()))
+            .filter(user::Column::Id.eq(invoice.user_id))
             .filter(user::Column::LockAmount.gte(lock_amount))
             .exec(&txn)
             .await?;
@@ -203,15 +327,18 @@ async fn pay_failed(conn: &DbConn, invoice: invoice::Model) -> Result<()> {
 
     Ok(())
 }
+
 async fn pay_success(
     conn: &DbConn,
     payment: lightning::Payment,
     invoice: invoice::Model,
 ) -> Result<invoice::Model> {
     let lock_amount = invoice.lock_amount;
+    let payback = lock_amount - payment.total;
 
     let update = invoice::ActiveModel {
-        status: Set(1),
+        payment_preimage: Set(payment.payment_preimage),
+        status: Set(invoice::Status::Paid),
         lock_amount: Set(0),
         amount: Set(payment.amount),
         paid_amount: Set(payment.amount),
@@ -234,6 +361,10 @@ async fn pay_success(
         // update user lock balance
         let _res = user::Entity::update_many()
             .col_expr(
+                user::Column::Balance,
+                Expr::col(user::Column::Balance).add(payback),
+            )
+            .col_expr(
                 user::Column::LockAmount,
                 Expr::col(user::Column::LockAmount).sub(lock_amount),
             )
@@ -252,7 +383,7 @@ async fn pay_success(
         .ok_or(Error::Str("where is the invoice?"))
 }
 
-fn active_model_from_invoice(
+fn create_invoice_active_model(
     user: &user::Model,
     preimage: Vec<u8>,
     invoice: lightning::Invoice,
@@ -262,12 +393,13 @@ fn active_model_from_invoice(
         user_id: Set(user.id),
         user_pubkey: Set(user.pubkey.clone()),
         payee: Set(invoice.payee),
-        r#type: Set(0),
-        status: Set(0),
+        r#type: Set(invoice::Type::Invoice),
+        status: Set(invoice::Status::Unpaid),
         payment_hash: Set(invoice.payment_hash),
         payment_preimage: Set(preimage),
         created_at: Set(invoice.created_at),
         expiry: Set(invoice.expiry),
+        expired_at: Set(invoice.created_at + invoice.expiry),
         description: Set(invoice.description),
         bolt11: Set(invoice.bolt11),
         amount: Set(invoice.amount),
@@ -276,5 +408,8 @@ fn active_model_from_invoice(
         fee: Set(0),
         total: Set(invoice.amount),
         lock_amount: Set(0),
+        internal: Set(false),
+        duplicate: Set(false),
+        service_fee: Set(0),
     }
 }
