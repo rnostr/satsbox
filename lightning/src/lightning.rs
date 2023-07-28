@@ -73,10 +73,12 @@ impl Invoice {
                 .ok_or_else(|| Error::Invalid("missing payment_secret".to_owned()))?
                 .0
                 .to_vec(),
+            // https://github.com/lightning/bolts/blob/master/11-payment-encoding.md
+            // Default is 3600 (1 hour) if not specified.
             expiry: inv
                 .expiry_time()
-                .ok_or_else(|| Error::Invalid("missing expiry".to_owned()))?
-                .as_seconds(),
+                .map(|e| e.as_seconds())
+                .unwrap_or(lightning_invoice::DEFAULT_EXPIRY_TIME),
             amount: inv
                 .amount_pico_btc()
                 .map(|v| v / 10)
@@ -84,8 +86,8 @@ impl Invoice {
             created_at: inv.raw_invoice().data.timestamp.as_unix_timestamp(),
             cltv_expiry: inv
                 .min_final_cltv_expiry_delta()
-                .ok_or_else(|| Error::Invalid("missing cltv_expiry".to_owned()))?
-                .0,
+                .map(|d| d.0)
+                .unwrap_or(lightning_invoice::DEFAULT_MIN_FINAL_CLTV_EXPIRY_DELTA), //Default is 18 if not specified.
             description: inv
                 .description()
                 .map(|d| d.clone().into_inner())
