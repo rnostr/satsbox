@@ -13,6 +13,12 @@ pub fn rand_preimage() -> Vec<u8> {
 }
 
 pub async fn timeout<L: Lightning>(client: &L) -> Result<()> {
+    // let image = rand_preimage();
+    // let expiry = 60 * 10; // 10 minutes
+    // let msats = 100_000;
+    // let res = client
+    //     .create_invoice("".to_owned(), msats, Some(image.clone()), Some(expiry))
+    //     .await;
     let res = client.get_info().await;
     // println!("res {:?}", res);
     assert!(res.is_err());

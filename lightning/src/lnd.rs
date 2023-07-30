@@ -45,7 +45,9 @@ pub mod routerrpc {
     tonic::include_proto!("routerrpc");
 }
 
-pub type MacaroonChannel = InterceptedService<LndChannel, MacaroonInterceptor>;
+type ChannelType = tower::util::Either<tower::timeout::Timeout<LndChannel>, LndChannel>;
+
+pub type MacaroonChannel = InterceptedService<ChannelType, MacaroonInterceptor>;
 
 pub type LightningClient = lnrpc::lightning_client::LightningClient<MacaroonChannel>;
 pub type PeersClient = peersrpc::peers_client::PeersClient<MacaroonChannel>;
@@ -124,7 +126,11 @@ impl Lnd {
         let interceptor = MacaroonInterceptor {
             macaroon: hex::encode(macaroon.as_ref()),
         };
-        let channel = LndChannel::new(cert.as_ref(), uri, timeout).await?;
+
+        let channel = LndChannel::new(cert.as_ref(), uri).await?;
+        let channel = ServiceBuilder::new()
+            .option_layer(timeout.map(TimeoutLayer::new))
+            .service(channel);
 
         Ok(Self {
             lightning: lnrpc::lightning_client::LightningClient::with_interceptor(
@@ -152,10 +158,11 @@ impl Lnd {
     }
 }
 
-type TlsClient = Client<
-    HttpsConnector<tower::util::Either<tower::timeout::Timeout<HttpConnector>, HttpConnector>>,
-    BoxBody,
->;
+// type TlsClient = Client<
+//     HttpsConnector<tower::util::Either<tower::timeout::Timeout<HttpConnector>, HttpConnector>>,
+//     BoxBody,
+// >;
+type TlsClient = Client<HttpsConnector<HttpConnector>, BoxBody>;
 const ALPN_H2_WIRE: &[u8] = b"\x02h2";
 
 #[derive(Clone, Debug)]
@@ -165,19 +172,15 @@ pub struct LndChannel {
 }
 
 impl LndChannel {
-    pub async fn new(pem: &[u8], uri: Uri, timeout: Option<Duration>) -> Result<Self> {
+    pub async fn new(pem: &[u8], uri: Uri) -> Result<Self> {
         let mut http = HttpConnector::new();
         http.enforce_http(false);
-
-        let connector = ServiceBuilder::new()
-            .option_layer(timeout.map(TimeoutLayer::new))
-            .service(http);
 
         let ca = X509::from_pem(pem)?;
         let mut ssl = SslConnector::builder(SslMethod::tls())?;
         ssl.cert_store_mut().add_cert(ca)?;
         ssl.set_alpn_protos(ALPN_H2_WIRE)?;
-        let mut https = HttpsConnector::with_connector(connector, ssl)?;
+        let mut https = HttpsConnector::with_connector(http, ssl)?;
         https.set_callback(|c, _| {
             c.set_verify_hostname(false);
             Ok(())
