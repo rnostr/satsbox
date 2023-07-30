@@ -95,12 +95,14 @@ pub struct Cln {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(default)]
 pub struct Fee {
-    /// The fee limit expressed as a percentage of the payment amount. (0-100)
+    /// lightning: The fee limit expressed as a percentage of the payment amount. (0-100)
     pub pay_limit_pct: f32,
-    /// small amounts (<=1k sat) payment max fee.
+    /// lightning: small amounts (<=1k sat) payment max fee.
     pub small_pay_limit_pct: f32,
     /// internal pyament fee
     pub internal_pct: f32,
+    /// service fee per payment
+    pub service_pct: f32,
 }
 
 impl Default for Fee {
@@ -109,7 +111,25 @@ impl Default for Fee {
             pay_limit_pct: 2.0,
             small_pay_limit_pct: 10.0,
             internal_pct: 0.3,
+            service_pct: 0.0,
         }
+    }
+}
+
+fn pct(amount: u64, pct: f32) -> u64 {
+    (amount as f64 * pct as f64 / 100.0).floor() as u64
+}
+
+impl Fee {
+    pub fn cal(&self, msats: u64, internal: bool) -> (u64, u64) {
+        let fee_pct = if internal {
+            self.internal_pct
+        } else if msats > 1000_000 {
+            self.pay_limit_pct
+        } else {
+            self.small_pay_limit_pct
+        };
+        (pct(msats, fee_pct), pct(msats, self.service_pct))
     }
 }
 
@@ -425,6 +445,20 @@ mod tests {
             let r = setting.read();
             assert_eq!(r.network.port, 1);
         }
+        Ok(())
+    }
+
+    #[test]
+    fn fee() -> Result<()> {
+        let fee = Fee {
+            pay_limit_pct: 0.5,
+            small_pay_limit_pct: 1.5,
+            internal_pct: 2.5,
+            service_pct: 0.3,
+        };
+        assert_eq!(fee.cal(1000, false), (15, 3));
+        assert_eq!(fee.cal(2000_000, false), (10_000, 6000));
+        assert_eq!(fee.cal(1000, true), (25, 3));
         Ok(())
     }
 }

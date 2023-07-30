@@ -95,6 +95,7 @@ impl Service {
         user: &user::Model,
         bolt11: String,
         fee: &Fee,
+        ignore_result: bool,
     ) -> Result<invoice::Model> {
         let inv = lightning::Invoice::from_bolt11(bolt11.clone())?;
         let info = self.lightning.get_info().await?;
@@ -106,12 +107,8 @@ impl Service {
             let payment_hash = inv.payment_hash.clone();
 
             let amount = inv.amount;
-            let max_fee = if amount > 1000_000 {
-                (amount as f64 * fee.pay_limit_pct as f64 / 100.0).floor() as u64
-            } else {
-                (amount as f64 * fee.small_pay_limit_pct as f64 / 100.0).floor() as u64
-            };
-            let total = amount + max_fee;
+            let (max_fee, service_fee) = fee.cal(amount, false);
+            let total = amount + max_fee + service_fee;
             if user.balance < total {
                 return Err(Error::Str("The balance is insufficient."));
             }
@@ -120,6 +117,7 @@ impl Service {
             // payment
             invoice.r#type = Set(invoice::Type::Payment);
             invoice.lock_amount = Set(total);
+            invoice.service_fee = Set(service_fee);
 
             let txn = self.conn.begin().await?;
             // lock balance
@@ -146,6 +144,12 @@ impl Service {
 
             // try pay
             let pay = self.lightning.pay(bolt11, Some(max_fee)).await;
+
+            // don't check payment result
+            if ignore_result {
+                return Ok(model);
+            }
+
             let payment = self.lightning.lookup_payment(payment_hash).await;
 
             match payment {
@@ -199,8 +203,8 @@ async fn internal_pay(
 ) -> Result<invoice::Model> {
     let payment_hash = inv.payment_hash.clone();
     let amount = inv.amount;
-    let fee = (amount as f64 * fee.internal_pct as f64 / 100.0).floor() as u64;
-    let total = amount + fee;
+    let (fee, service_fee) = fee.cal(amount, true);
+    let total = amount + fee + service_fee;
     if user.balance < total {
         return Err(Error::Str("The balance is insufficient."));
     }
@@ -228,12 +232,15 @@ async fn internal_pay(
     payment_model.fee = Set(fee);
     payment_model.total = Set(total);
     payment_model.paid_at = Set(time);
+    payment_model.service_fee = Set(service_fee);
+    payment_model.internal = Set(true);
 
     let payee_update = invoice::ActiveModel {
         status: Set(invoice::Status::Paid),
         amount: Set(amount),
         paid_amount: Set(amount),
         paid_at: Set(time),
+        internal: Set(true),
         ..Default::default()
     };
 
@@ -286,8 +293,8 @@ async fn internal_pay(
     Ok(payment)
 }
 
-async fn pay_failed(conn: &DbConn, invoice: invoice::Model) -> Result<()> {
-    let lock_amount = invoice.lock_amount;
+async fn pay_failed(conn: &DbConn, model: invoice::Model) -> Result<()> {
+    let lock_amount = model.lock_amount;
 
     let update = invoice::ActiveModel {
         status: Set(invoice::Status::Canceled),
@@ -299,7 +306,7 @@ async fn pay_failed(conn: &DbConn, invoice: invoice::Model) -> Result<()> {
 
     let res = invoice::Entity::update_many()
         .set(update)
-        .filter(invoice::Column::Id.eq(invoice.id))
+        .filter(invoice::Column::Id.eq(model.id))
         .filter(invoice::Column::Status.eq(invoice::Status::Unpaid))
         .filter(invoice::Column::LockAmount.eq(lock_amount))
         .exec(&txn)
@@ -316,7 +323,7 @@ async fn pay_failed(conn: &DbConn, invoice: invoice::Model) -> Result<()> {
                 user::Column::LockAmount,
                 Expr::col(user::Column::LockAmount).sub(lock_amount),
             )
-            .filter(user::Column::Id.eq(invoice.user_id))
+            .filter(user::Column::Id.eq(model.user_id))
             .filter(user::Column::LockAmount.gte(lock_amount))
             .exec(&txn)
             .await?;
@@ -331,10 +338,10 @@ async fn pay_failed(conn: &DbConn, invoice: invoice::Model) -> Result<()> {
 async fn pay_success(
     conn: &DbConn,
     payment: lightning::Payment,
-    invoice: invoice::Model,
+    model: invoice::Model,
 ) -> Result<invoice::Model> {
-    let lock_amount = invoice.lock_amount;
-    let payback = lock_amount - payment.total;
+    let lock_amount = model.lock_amount;
+    let payback = lock_amount - model.service_fee - payment.total;
 
     let update = invoice::ActiveModel {
         payment_preimage: Set(payment.payment_preimage),
@@ -352,7 +359,7 @@ async fn pay_success(
 
     let res = invoice::Entity::update_many()
         .set(update)
-        .filter(invoice::Column::Id.eq(invoice.id))
+        .filter(invoice::Column::Id.eq(model.id))
         .filter(invoice::Column::LockAmount.eq(lock_amount))
         .exec(&txn)
         .await?;
@@ -368,7 +375,7 @@ async fn pay_success(
                 user::Column::LockAmount,
                 Expr::col(user::Column::LockAmount).sub(lock_amount),
             )
-            .filter(user::Column::Pubkey.eq(invoice.user_pubkey.clone()))
+            .filter(user::Column::Pubkey.eq(model.user_pubkey.clone()))
             .filter(user::Column::LockAmount.gte(lock_amount))
             .exec(&txn)
             .await?;
@@ -377,7 +384,7 @@ async fn pay_success(
     }
     txn.commit().await?;
 
-    invoice::Entity::find_by_id(invoice.id)
+    invoice::Entity::find_by_id(model.id)
         .one(conn)
         .await?
         .ok_or(Error::Str("where is the invoice?"))
