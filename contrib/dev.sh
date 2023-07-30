@@ -104,13 +104,29 @@ connect() {
   _trace $CLN_CLI connect $lndurl >/dev/null
 }
 
-# open channel
-open() {
+# open two channel
+open_to_lnd() {
   local lndid=$(_trace $LND_CLI getinfo | grep identity_pubkey | cut -d '"' -f4)
-  _trace $CLN_CLI fundchannel "$lndid" 1000000 > /dev/null
-  #_trace $LND_CLI openchannel "$clnid" 1000000 > /dev/null
-  gen_blocks 6
-  sleep 1
+  _trace $CLN_CLI fundchannel "$lndid" 1000000
+  gen_blocks 1
+  gen_blocks 1
+  gen_blocks 1
+  gen_blocks 1
+  gen_blocks 1
+  gen_blocks 1
+  sleep 2
+}
+
+open_to_cln() {
+  local clnid=$(_trace $CLN_CLI -F getinfo | grep id | cut -d= -f2-)
+  _trace $LND_CLI openchannel "$clnid" 1001000
+  gen_blocks 1
+  gen_blocks 1
+  gen_blocks 1
+  gen_blocks 1
+  gen_blocks 1
+  gen_blocks 1
+  sleep 2
 }
 
 # pay invoice
@@ -122,6 +138,25 @@ pay() {
   # _trace $CLN_CLI listpays
   # _trace $LND_CLI lnd-cli sendpayment -f --pay_req "$payment" #> /dev/null
   # _trace $LND_CLI listpayments
+}
+
+# initialize for test
+test() {
+  _tit 'preparing bitcoin wallets'
+  prepare_wallets
+  _tit 'initial blocks'
+  init_blocks
+  sleep 1
+  connect
+  sleep 1
+  fund_cln_addr
+  fund_lnd_addr
+  sleep 10
+  open_to_cln
+  sleep 10
+  open_to_lnd
+  sleep 20
+  _trace $LND_CLI listchannels
 }
 
 # cmdline options
@@ -150,15 +185,22 @@ fund)
   ;;
 
 open)  
-  open
+  open_to_cln
+  sleep 2
+  open_to_lnd
   ;;
 
 pay)  
   pay
   ;;
 
+test)  
+  test
+  ;;
+
+
 *)      
-  echo "Usage: dev.sh {prepare|connect|fund|open|pay}"
+  echo "Usage: dev.sh {prepare|connect|fund|open|pay|test}"
   exit 2
   ;;
 esac
