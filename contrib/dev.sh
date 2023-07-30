@@ -56,7 +56,10 @@ init_blocks() {
 gen_blocks() {
     local count="$1"
     _subtit "mining $count block(s)"
-    _trace $BCLI loadwallet miner >/dev/null
+    if [ -z $($BCLI listwallets | grep 'miner') ];
+      then
+        _trace $BCLI loadwallet miner >/dev/null
+    fi
     _trace $BCLI -rpcwallet=miner -generate $count >/dev/null
     sleep 1     # give electrs time to index
 }
@@ -64,7 +67,10 @@ gen_blocks() {
 gen_addr() {
     local wallet="$1"
     _subtit "generating new address for wallet \"$wallet\""
-    _trace $BCLI loadwallet $wallet >/dev/null
+    if [ -z $($BCLI listwallets | grep $wallet) ];
+      then
+        _trace $BCLI loadwallet $wallet >/dev/null
+    fi
     addr=$(_trace $BCLI -rpcwallet=$wallet getnewaddress demo bech32m |tr -d '\r')
     _log $addr
 }
@@ -179,6 +185,10 @@ connect)
   connect
   ;;
 
+gen)  
+  gen_blocks 1
+  ;;
+
 fund)  
   fund_cln_addr
   fund_lnd_addr
@@ -200,7 +210,7 @@ test)
 
 
 *)      
-  echo "Usage: dev.sh {prepare|connect|fund|open|pay|test}"
+  echo "Usage: dev.sh {prepare|gen|connect|fund|open|pay|test}"
   exit 2
   ;;
 esac
