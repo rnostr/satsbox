@@ -58,7 +58,7 @@ impl AppState {
     }
 
     pub async fn from_setting(setting: Setting) -> Result<Self> {
-        let timeout = Some(Duration::from_secs(60));
+        let timeout = Some(Duration::from_secs(5));
         let conf: (String, Box<dyn Lightning + Sync + Send>) = match setting.lightning {
             crate::setting::Lightning::Lnd => {
                 let s = setting

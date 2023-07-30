@@ -1,13 +1,3 @@
-use anyhow::Result;
-use migration::{Migrator, MigratorTrait};
-use satsbox::{create_web_app, AppState};
-
-pub fn get_env(key: &str) -> String {
-    std::env::var(key).expect(&format!("missing env: {key}"))
-}
-
-use std::time::Duration;
-
 use actix_rt::time::sleep;
 use actix_test::read_body;
 use actix_web::{
@@ -15,6 +5,10 @@ use actix_web::{
     test::{init_service, TestRequest},
     web,
 };
+use anyhow::Result;
+use migration::{Migrator, MigratorTrait};
+use satsbox::{create_web_app, AppState};
+use std::time::Duration;
 
 async fn create_test_state() -> Result<AppState> {
     let _ = dotenvy::dotenv();

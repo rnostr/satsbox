@@ -38,12 +38,19 @@ pub struct Model {
     /// 0, unpaid, 1: paid, 2: canceled
     pub status: Status,
 
+    pub service: String,
+    pub source: String,
+
     #[sea_orm(column_type = "Binary(BlobSize::Blob(None))")]
     pub payment_hash: Vec<u8>,
     #[sea_orm(column_type = "Binary(BlobSize::Blob(None))")]
     pub payment_preimage: Vec<u8>,
 
+    /// data create time
     pub created_at: u64,
+
+    /// invoice create time
+    pub generated_at: u64,
     pub expiry: u64,
     pub expired_at: u64,
 

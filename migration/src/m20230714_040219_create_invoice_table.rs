@@ -47,6 +47,18 @@ impl MigrationTrait for Migration {
                             .default(0),
                     )
                     .col(
+                        ColumnDef::new(invoice::Column::Source)
+                            .string()
+                            .not_null()
+                            .default("".to_owned()),
+                    )
+                    .col(
+                        ColumnDef::new(invoice::Column::Service)
+                            .string()
+                            .not_null()
+                            .default("".to_owned()),
+                    )
+                    .col(
                         ColumnDef::new(invoice::Column::PaymentHash)
                             .binary_len(32)
                             .not_null(),
@@ -58,6 +70,11 @@ impl MigrationTrait for Migration {
                     )
                     .col(
                         ColumnDef::new(invoice::Column::CreatedAt)
+                            .big_unsigned()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(invoice::Column::GeneratedAt)
                             .big_unsigned()
                             .not_null(),
                     )

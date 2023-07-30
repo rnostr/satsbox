@@ -10,9 +10,9 @@ pub struct Model {
     #[sea_orm(column_type = "Binary(BlobSize::Blob(None))")]
     pub pubkey: Vec<u8>,
     /// user balance in msats
-    pub balance: u64,
+    pub balance: i64,
     /// Number of balances temporarily locked at the time of payment
-    pub lock_amount: u64,
+    pub lock_amount: i64,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

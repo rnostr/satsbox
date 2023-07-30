@@ -71,6 +71,7 @@ impl Service {
         memo: String,
         msats: u64,
         expiry: u64,
+        source: String,
     ) -> Result<invoice::Model> {
         let preimage = rand_preimage();
         let mut hasher = Sha256::new();
@@ -84,10 +85,10 @@ impl Service {
         if &invoice.payment_hash != &hash {
             return Err(Error::Str("invalid payment hash"));
         }
-        let i = create_invoice_active_model(user, preimage, invoice)
-            .insert(self.conn())
-            .await?;
-        Ok(i)
+
+        let model = create_invoice_active_model(user, preimage, invoice, self.name.clone(), source);
+
+        Ok(model.insert(self.conn()).await?)
     }
 
     pub async fn pay(
@@ -101,7 +102,7 @@ impl Service {
         let info = self.lightning.get_info().await?;
         if info.id.eq(&inv.payee) {
             // internal payment
-            internal_pay(&self.conn, user, inv, fee).await
+            internal_pay(&self.conn, user, inv, fee, self.name.clone()).await
         } else {
             // external payment
             let payment_hash = inv.payment_hash.clone();
@@ -109,11 +110,12 @@ impl Service {
             let amount = inv.amount;
             let (max_fee, service_fee) = fee.cal(amount, false);
             let total = amount + max_fee + service_fee;
-            if user.balance < total {
+            if user.balance < total as i64 {
                 return Err(Error::Str("The balance is insufficient."));
             }
 
-            let mut invoice = create_invoice_active_model(&user, vec![], inv);
+            let mut invoice =
+                create_invoice_active_model(&user, vec![], inv, self.name.clone(), "".to_owned());
             // payment
             invoice.r#type = Set(invoice::Type::Payment);
             invoice.lock_amount = Set(total);
@@ -200,12 +202,13 @@ async fn internal_pay(
     user: &user::Model,
     inv: lightning::Invoice,
     fee: &Fee,
+    service: String,
 ) -> Result<invoice::Model> {
     let payment_hash = inv.payment_hash.clone();
     let amount = inv.amount;
     let (fee, service_fee) = fee.cal(amount, true);
     let total = amount + fee + service_fee;
-    if user.balance < total {
+    if user.balance < total as i64 {
         return Err(Error::Str("The balance is insufficient."));
     }
 
@@ -221,8 +224,13 @@ async fn internal_pay(
     }
 
     let time = now();
-    let mut payment_model =
-        create_invoice_active_model(&user, payee_inv.payment_preimage.clone(), inv);
+    let mut payment_model = create_invoice_active_model(
+        &user,
+        payee_inv.payment_preimage.clone(),
+        inv,
+        service,
+        "".to_owned(),
+    );
     // payment
     payment_model.r#type = Set(invoice::Type::Payment);
     payment_model.lock_amount = Set(0);
@@ -394,6 +402,8 @@ fn create_invoice_active_model(
     user: &user::Model,
     preimage: Vec<u8>,
     invoice: lightning::Invoice,
+    service: String,
+    source: String,
 ) -> invoice::ActiveModel {
     invoice::ActiveModel {
         id: NotSet,
@@ -404,7 +414,7 @@ fn create_invoice_active_model(
         status: Set(invoice::Status::Unpaid),
         payment_hash: Set(invoice.payment_hash),
         payment_preimage: Set(preimage),
-        created_at: Set(invoice.created_at),
+        generated_at: Set(invoice.created_at),
         expiry: Set(invoice.expiry),
         expired_at: Set(invoice.created_at + invoice.expiry),
         description: Set(invoice.description),
@@ -418,5 +428,8 @@ fn create_invoice_active_model(
         internal: Set(false),
         duplicate: Set(false),
         service_fee: Set(0),
+        source: Set(source),
+        service: Set(service),
+        created_at: Set(now()),
     }
 }
