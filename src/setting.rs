@@ -116,12 +116,12 @@ impl Default for Fee {
     }
 }
 
-fn pct(amount: u64, pct: f32) -> u64 {
-    (amount as f64 * pct as f64 / 100.0).floor() as u64
+fn pct(amount: i64, pct: f32) -> i64 {
+    (amount as f64 * pct as f64 / 100.0).floor() as i64
 }
 
 impl Fee {
-    pub fn cal(&self, msats: u64, internal: bool) -> (u64, u64) {
+    pub fn cal(&self, msats: i64, internal: bool) -> (i64, i64) {
         let fee_pct = if internal {
             self.internal_pct
         } else if msats > 1000_000 {

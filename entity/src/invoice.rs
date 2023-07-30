@@ -22,9 +22,9 @@ pub enum Status {
 #[sea_orm(table_name = "invoices")]
 pub struct Model {
     #[sea_orm(primary_key)]
-    pub id: i32,
+    pub id: i64,
 
-    pub user_id: i32,
+    pub user_id: i64,
 
     #[sea_orm(column_type = "Binary(BlobSize::Blob(None))")]
     pub user_pubkey: Vec<u8>,
@@ -47,12 +47,12 @@ pub struct Model {
     pub payment_preimage: Vec<u8>,
 
     /// data create time
-    pub created_at: u64,
+    pub created_at: i64,
 
     /// invoice create time
-    pub generated_at: u64,
-    pub expiry: u64,
-    pub expired_at: u64,
+    pub generated_at: i64,
+    pub expiry: i64,
+    pub expired_at: i64,
 
     #[sea_orm(column_type = "Text")]
     pub description: String,
@@ -60,19 +60,19 @@ pub struct Model {
     pub bolt11: String,
 
     /// invoice amount
-    pub amount: u64,
-    pub paid_at: u64,
+    pub amount: i64,
+    pub paid_at: i64,
     /// real paid amount
-    pub paid_amount: u64,
-    pub fee: u64,
-    pub total: u64,
+    pub paid_amount: i64,
+    pub fee: i64,
+    pub total: i64,
     /// Number of balances temporarily locked at the time of payment
-    pub lock_amount: u64,
+    pub lock_amount: i64,
     /// user internal pay
     pub internal: bool,
     /// duplicate payment by external and internal
     pub duplicate: bool,
-    pub service_fee: u64,
+    pub service_fee: i64,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

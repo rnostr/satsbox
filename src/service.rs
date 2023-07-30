@@ -50,6 +50,20 @@ impl Service {
             .await?)
     }
 
+    pub async fn update_user_balance(
+        &self,
+        user: &user::Model,
+        balance: i64,
+    ) -> Result<user::Model> {
+        Ok(user::ActiveModel {
+            id: Set(user.id),
+            balance: Set(balance),
+            ..Default::default()
+        }
+        .update(self.conn())
+        .await?)
+    }
+
     pub async fn get_or_create_user(&self, pubkey: Vec<u8>) -> Result<user::Model> {
         match self.get_user(pubkey.clone()).await? {
             Some(u) => Ok(u),
@@ -63,6 +77,10 @@ impl Service {
                 .await?)
             }
         }
+    }
+
+    pub async fn get_invoice(&self, id: i64) -> Result<Option<invoice::Model>> {
+        Ok(invoice::Entity::find_by_id(id).one(self.conn()).await?)
     }
 
     pub async fn create_invoice(
@@ -107,10 +125,10 @@ impl Service {
             // external payment
             let payment_hash = inv.payment_hash.clone();
 
-            let amount = inv.amount;
+            let amount = inv.amount as i64;
             let (max_fee, service_fee) = fee.cal(amount, false);
             let total = amount + max_fee + service_fee;
-            if user.balance < total as i64 {
+            if user.balance < total {
                 return Err(Error::Str("The balance is insufficient."));
             }
 
@@ -145,7 +163,7 @@ impl Service {
             txn.commit().await?;
 
             // try pay
-            let pay = self.lightning.pay(bolt11, Some(max_fee)).await;
+            let pay = self.lightning.pay(bolt11, Some(max_fee as u64)).await;
 
             // don't check payment result
             if ignore_result {
@@ -190,11 +208,11 @@ impl Service {
     }
 }
 
-fn now() -> u64 {
+fn now() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
-        .as_secs()
+        .as_secs() as i64
 }
 
 async fn internal_pay(
@@ -205,10 +223,10 @@ async fn internal_pay(
     service: String,
 ) -> Result<invoice::Model> {
     let payment_hash = inv.payment_hash.clone();
-    let amount = inv.amount;
+    let amount = inv.amount as i64;
     let (fee, service_fee) = fee.cal(amount, true);
     let total = amount + fee + service_fee;
-    if user.balance < total as i64 {
+    if user.balance < total {
         return Err(Error::Str("The balance is insufficient."));
     }
 
@@ -349,17 +367,17 @@ async fn pay_success(
     model: invoice::Model,
 ) -> Result<invoice::Model> {
     let lock_amount = model.lock_amount;
-    let payback = lock_amount - model.service_fee - payment.total;
+    let payback = lock_amount - model.service_fee - payment.total as i64;
 
     let update = invoice::ActiveModel {
         payment_preimage: Set(payment.payment_preimage),
         status: Set(invoice::Status::Paid),
         lock_amount: Set(0),
-        amount: Set(payment.amount),
-        paid_amount: Set(payment.amount),
-        fee: Set(payment.fee),
-        total: Set(payment.total),
-        paid_at: Set(payment.created_at),
+        amount: Set(payment.amount as i64),
+        paid_amount: Set(payment.amount as i64),
+        fee: Set(payment.fee as i64),
+        total: Set(payment.total as i64),
+        paid_at: Set(payment.created_at as i64),
         ..Default::default()
     };
 
@@ -414,16 +432,16 @@ fn create_invoice_active_model(
         status: Set(invoice::Status::Unpaid),
         payment_hash: Set(invoice.payment_hash),
         payment_preimage: Set(preimage),
-        generated_at: Set(invoice.created_at),
-        expiry: Set(invoice.expiry),
-        expired_at: Set(invoice.created_at + invoice.expiry),
+        generated_at: Set(invoice.created_at as i64),
+        expiry: Set(invoice.expiry as i64),
+        expired_at: Set((invoice.created_at + invoice.expiry) as i64),
         description: Set(invoice.description),
         bolt11: Set(invoice.bolt11),
-        amount: Set(invoice.amount),
+        amount: Set(invoice.amount as i64),
         paid_at: Set(0),
-        paid_amount: Set(invoice.amount),
+        paid_amount: Set(invoice.amount as i64),
         fee: Set(0),
-        total: Set(invoice.amount),
+        total: Set(invoice.amount as i64),
         lock_amount: Set(0),
         internal: Set(false),
         duplicate: Set(false),
