@@ -15,16 +15,17 @@ pub fn rand_preimage() -> Vec<u8> {
     store_key_bytes.to_vec()
 }
 
+type Lt = Box<dyn Lightning + Sync + Send>;
 /// Lightning service
 // #[derive(Clone)]
 pub struct Service {
-    lightning: Box<dyn Lightning + Sync + Send>,
+    lightning: Lt,
     conn: DbConn,
     name: String,
 }
 
 impl Service {
-    pub fn new(name: String, lightning: Box<dyn Lightning + Sync + Send>, conn: DbConn) -> Self {
+    pub fn new(name: String, lightning: Lt, conn: DbConn) -> Self {
         Self {
             name,
             lightning,
@@ -36,7 +37,7 @@ impl Service {
         &self.name
     }
 
-    pub fn lightning(&self) -> &Box<dyn Lightning + Sync + Send> {
+    pub fn lightning(&self) -> &Lt {
         &self.lightning
     }
 

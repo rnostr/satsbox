@@ -123,7 +123,7 @@ async fn internal_payment() -> Result<()> {
         }
     };
 
-    let (internal_fee, service_fee) = fee.cal(msats as i64, true);
+    let (internal_fee, service_fee) = fee.cal(msats, true);
 
     let payee_invoice = service.get_invoice(payee_invoice.id).await?.unwrap();
     let payer_user = service.get_user(payer_pubkey).await?.unwrap();
@@ -259,7 +259,7 @@ async fn pay(payer: Lightning, payee: Lightning, test_sync: bool) -> Result<()> 
     let count = payee_service.sync_invoices(now() - 60).await?;
     assert_eq!(count, 1);
 
-    let (_max_fee, service_fee) = fee.cal(msats as i64, false);
+    let (_max_fee, service_fee) = fee.cal(msats, false);
     let real_fee = 0;
 
     let payee_invoice = payee_service.get_invoice(payee_invoice.id).await?.unwrap();
@@ -357,7 +357,7 @@ async fn duplicate_payment() -> Result<()> {
     let count = service.sync_invoices(now() - 60).await?;
     assert_eq!(count, 1);
 
-    let (internal_fee, service_fee) = fee.cal(msats as i64, true);
+    let (internal_fee, service_fee) = fee.cal(msats, true);
 
     let payee_invoice = service.get_invoice(payee_invoice.id).await?.unwrap();
     let payer_user = service.get_user(payer_pubkey).await?.unwrap();
@@ -379,7 +379,7 @@ async fn duplicate_payment() -> Result<()> {
     assert_eq!(payee_invoice.status, invoice::Status::Paid);
     assert_eq!(payee_invoice.amount, msats);
     assert_eq!(payee_invoice.paid_amount, msats * 2);
-    assert_eq!(payee_invoice.duplicate, true);
+    assert!(payee_invoice.duplicate);
 
     assert_eq!(payment.payment_preimage, payee_invoice.payment_preimage);
 

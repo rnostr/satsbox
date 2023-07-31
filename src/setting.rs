@@ -457,7 +457,7 @@ mod tests {
             service_pct: 0.3,
         };
         assert_eq!(fee.cal(1000, false), (15, 3));
-        assert_eq!(fee.cal(2000_000, false), (10_000, 6000));
+        assert_eq!(fee.cal(2_000_000, false), (10_000, 6000));
         assert_eq!(fee.cal(1000, true), (25, 3));
         Ok(())
     }
