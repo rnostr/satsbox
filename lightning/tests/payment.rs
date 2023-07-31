@@ -6,7 +6,7 @@ macro_rules! test_method {
     ($t:ident, $c1:ident, $c2: ident) => {
         #[tokio::test]
         async fn $t() -> Result<()> {
-            dotenvy::dotenv()?;
+            dotenvy::from_filename(".test.env")?;
             let c1 = util::$c1(None).await?;
             let c2 = util::$c2(None).await?;
             lightning::$t(&c1, &c2).await?;

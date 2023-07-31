@@ -12,8 +12,7 @@ use std::time::Duration;
 use tokio::time::sleep;
 
 async fn create_test_state(lightning: Option<Lightning>) -> Result<AppState> {
-    let _ = dotenvy::dotenv();
-    let _ = dotenvy::from_filename_override(".env.test");
+    dotenvy::from_filename(".test.env")?;
     let mut setting = Setting::from_env("SATSBOX".to_owned())?;
     if let Some(lightning) = lightning {
         setting.lightning = lightning;

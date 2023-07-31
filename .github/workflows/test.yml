@@ -1,0 +1,68 @@
+name: Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+
+  fmt:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - run: cargo fmt --all --  --check
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust:
+          - version: stable
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Cache
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.toml','**/Cargo.lock') }}
+
+    - name: Set default toolchain
+      run: rustup default ${{ matrix.rust.version }}
+
+    - name: Set profile
+      run: rustup set profile minimal && rustup component add clippy
+
+    - name: Install dependences
+      run: sh ./contrib/ubuntu.sh
+
+    - name: Build
+      run: cargo build
+
+    - name: Start dependences
+      run: |
+        cd ./contrib 
+        docker-compose -f docker-compose.test.yml up -d
+        sleep 3 
+        sh dev.sh copy_cert -v
+        sh dev.sh test -v
+
+    - name: Tests
+      run: |
+        cargo test -p lightning-client
+        cargo test
+
+    - name: Clippy
+      run: cargo clippy -- -D warnings
+

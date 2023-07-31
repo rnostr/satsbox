@@ -11,8 +11,9 @@ use satsbox::{create_web_app, AppState};
 use std::time::Duration;
 
 async fn create_test_state() -> Result<AppState> {
-    let _ = dotenvy::dotenv();
-    let _ = dotenvy::from_filename_override(".env.test");
+    dotenvy::from_filename(".test.env")?;
+    // let _ = dotenvy::dotenv();
+    // let _ = dotenvy::from_filename_override(".test.env");
     // println!("{:?}", std::env::vars().collect::<Vec<_>>());
     let state = AppState::create(None::<String>, Some("SATSBOX".to_owned())).await?;
     Migrator::fresh(state.service.db()).await?;

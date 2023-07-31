@@ -9,9 +9,8 @@ services:
     restart: unless-stopped
     # https://github.com/lncm/docker-bitcoind
     image: lncm/bitcoind:v25.0
-    user: 1000:1000
-    volumes:
-      - ./data/bitcoin:/data/.bitcoin
+    #volumes:
+    #  - ./data/bitcoin:/data/.bitcoin
     networks:
       - default
     command:
@@ -33,44 +32,7 @@ services:
     #  - 18332:18332
     #  - 18443:18443
     #  - 18444:18444
-    
-  #btc-explorer:
-  #  restart: unless-stopped
-  #  image: getumbrel/btc-rpc-explorer:v3.3.0
-  #  environment:
-  #    BTCEXP_HOST: 0.0.0.0
-  #    BTCEXP_BITCOIND_URI: bitcoin://test:test@bitcoind:18443
-  #    BTCEXP_ADDRESS_API: electrum
-  #    BTCEXP_ELECTRUM_SERVERS: tcp://electrs:50001
-  #  ports:
-  #    - 3002:3002
-  #  networks:
-  #    - default
-  #  depends_on:
-  #    - bitcoind
-  #  links:
-  #    - bitcoind
 
-  #electrs:
-  #  restart: unless-stopped
-  #  image: getumbrel/electrs:v0.9.14
-  #  environment:
-  #    ELECTRS_LOG_FILTERS: "INFO"
-  #    ELECTRS_NETWORK: "regtest"
-  #    ELECTRS_DAEMON_RPC_ADDR: "bitcoind:18443"
-  #    ELECTRS_DAEMON_P2P_ADDR: "bitcoind:18444"
-  #    ELECTRS_ELECTRUM_RPC_ADDR: "0.0.0.0:50001"
-  #    ELECTRS_SERVER_BANNER: "Electrs"
-  #    ELECTRS_COOKIE_FILE: "/bitcoin/regtest/.cookie"
-  #  volumes:
-  #    - ./data/electrs:/data
-  #    - ./data/bitcoin:/bitcoin
-  #  #ports:
-  #  #  - 50001:50001
-  #  networks:
-  #    - default
-  #  depends_on:
-  #    - bitcoind
 
   lnd:
     restart: unless-stopped
@@ -98,8 +60,8 @@ services:
       - --bitcoind.zmqpubrawtx=tcp://bitcoind:28336 
       - --accept-amp
       - --accept-keysend
-    volumes:
-      - ./data/lnd:/root/.lnd
+    #volumes:
+    #  - ./data/lnd:/root/.lnd
     networks:
       - default
     links:
@@ -130,8 +92,8 @@ services:
       - --grpc-port=10008
     ports:
       - '10008:10008'
-    volumes:
-      - ./data/cln:/root/.lightning
+    #volumes:
+    #  - ./data/cln:/root/.lightning
     networks:
       - default
     links:

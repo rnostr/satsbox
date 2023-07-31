@@ -1,6 +1,8 @@
-BCLI='docker-compose exec --user bitcoind bitcoind  bitcoin-cli -regtest '
-CLN_CLI='docker-compose exec cln lightning-cli --network=regtest '
-LND_CLI='docker-compose exec lnd lncli --network=regtest '
+#!/bin/bash
+
+BCLI='docker compose exec -T --user bitcoind bitcoind  bitcoin-cli -regtest '
+CLN_CLI='docker compose exec -T cln lightning-cli --network=regtest '
+LND_CLI='docker compose exec -T lnd lncli --network=regtest '
 
 txid="" 
 
@@ -113,7 +115,18 @@ connect() {
 # open two channel
 open_to_lnd() {
   local lndid=$(_trace $LND_CLI getinfo | grep identity_pubkey | cut -d '"' -f4)
-  _trace $CLN_CLI fundchannel "$lndid" 1000000
+  local res=$(_trace $CLN_CLI fundchannel "$lndid" 1000000)
+  local txid=$(echo $res | awk '{split($0,a,"txid"); print a[2]}' | awk '{split($0,a,"\""); print a[3]}')
+  while [ -z "$txid" ]
+  do
+    echo $res
+    _log "Wait syncing bitcoin network..."
+    sleep 2
+    res=$(_trace $CLN_CLI fundchannel "$lndid" 1000000)
+    txid=$(echo $res | awk '{split($0,a,"txid"); print a[2]}' | awk '{split($0,a,"\""); print a[3]}')
+  done
+  _log "open channel txid: $txid"
+
   gen_blocks 1
   gen_blocks 1
   gen_blocks 1
@@ -125,7 +138,20 @@ open_to_lnd() {
 
 open_to_cln() {
   local clnid=$(_trace $CLN_CLI -F getinfo | grep id | cut -d= -f2-)
-  _trace $LND_CLI openchannel "$clnid" 1001000
+
+  local res=$(_trace $LND_CLI openchannel "$clnid" 1001000)
+  local txid=$(echo $res | awk '{split($0,a,"txid"); print a[2]}' | awk '{split($0,a,"\""); print a[3]}')
+  while [ -z "$txid" ]
+  do
+    echo $res
+    _log "Wait syncing bitcoin network..."
+    sleep 2
+    res=$(_trace $LND_CLI openchannel "$clnid" 1001000)
+    txid=$(echo $res | awk '{split($0,a,"txid"); print a[2]}' | awk '{split($0,a,"\""); print a[3]}')
+  done
+  _log "open channel txid: $txid"
+
+
   gen_blocks 1
   gen_blocks 1
   gen_blocks 1
@@ -146,6 +172,26 @@ pay() {
   # _trace $LND_CLI listpayments
 }
 
+_cp() {
+    local script="$1"
+    local remote_root="$2"
+    local local_root="$3"
+    local path="$4"
+    local name="$5"
+    local local_path=$local_root$path
+    mkdir -p $local_path
+    _trace $script $remote_root$path$name > $local_path$name
+}
+
+copy_cert() {
+  local root="./data"
+  _cp "docker compose exec -T cln cat"  "/root/.lightning" "$root/cln" "/regtest/"  "ca.pem"
+  _cp "docker compose exec -T cln cat"  "/root/.lightning" "$root/cln" "/regtest/"  "client.pem"
+  _cp "docker compose exec -T cln cat"  "/root/.lightning" "$root/cln" "/regtest/"  "client-key.pem"
+  _cp "docker compose exec -T lnd cat"  "/root/.lnd" "$root/lnd" "/"  "tls.cert"
+  _cp "docker compose exec -T lnd cat"  "/root/.lnd" "$root/lnd" "/data/chain/bitcoin/regtest/"  "admin.macaroon"
+}
+
 # initialize for test
 test() {
   _tit 'preparing bitcoin wallets'
@@ -157,11 +203,17 @@ test() {
   sleep 1
   fund_cln_addr
   fund_lnd_addr
-  sleep 10
-  open_to_cln
-  sleep 10
+  sleep 2
   open_to_lnd
-  sleep 20
+  sleep 2
+  open_to_cln
+  local active_res=$($LND_CLI listchannels | grep '"active": false')
+  while [ -n "$active_res" ]
+  do
+    _log "Wait channel active..."
+    sleep 2
+    active_res=$($LND_CLI listchannels | grep '"active": false')
+  done
   _trace $LND_CLI listchannels
 }
 
@@ -195,13 +247,17 @@ fund)
   ;;
 
 open)  
-  open_to_cln
-  sleep 2
   open_to_lnd
+  sleep 2
+  open_to_cln
   ;;
 
 pay)  
   pay
+  ;;
+
+copy_cert)  
+  copy_cert
   ;;
 
 test)  
@@ -210,7 +266,7 @@ test)
 
 
 *)      
-  echo "Usage: dev.sh {prepare|gen|connect|fund|open|pay|test}"
+  echo "Usage: dev.sh {prepare|gen|connect|fund|open|pay|test|copy_cert}"
   exit 2
   ;;
 esac
