@@ -36,13 +36,13 @@ impl MigrationTrait for Migration {
                     )
                     .col(
                         ColumnDef::new(invoice::Column::Type)
-                            .small_unsigned()
+                            .integer()
                             .not_null()
                             .default(0),
                     )
                     .col(
                         ColumnDef::new(invoice::Column::Status)
-                            .small_unsigned()
+                            .integer()
                             .not_null()
                             .default(0),
                     )
@@ -158,6 +158,19 @@ impl MigrationTrait for Migration {
                     .to_owned(),
             )
             .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .if_not_exists()
+                    .name("idx_invoice_type_status")
+                    .col(invoice::Column::Type)
+                    .col(invoice::Column::Status)
+                    .table(invoice::Entity)
+                    .to_owned(),
+            )
+            .await?;
+
         Ok(())
     }
 
@@ -169,6 +182,11 @@ impl MigrationTrait for Migration {
                     .to_owned(),
             )
             .await?;
+
+        manager
+            .drop_index(Index::drop().name("idx_invoice_type_status").to_owned())
+            .await?;
+
         manager
             .drop_table(Table::drop().table(invoice::Entity).to_owned())
             .await

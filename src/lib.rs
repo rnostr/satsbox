@@ -1,3 +1,5 @@
+use std::time::{SystemTime, UNIX_EPOCH};
+
 mod app;
 mod hash;
 mod service;
@@ -23,8 +25,17 @@ pub enum Error {
     Message(String),
     #[error("{0}")]
     Str(&'static str),
+    #[error("{0}")]
+    InvalidPayment(String),
 }
 
 impl actix_web::ResponseError for Error {}
 
 pub type Result<T, E = Error> = core::result::Result<T, E>;
+
+pub fn now() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}

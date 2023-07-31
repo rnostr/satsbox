@@ -15,7 +15,7 @@ async fn create_test_state() -> Result<AppState> {
     let _ = dotenvy::from_filename_override(".env.test");
     // println!("{:?}", std::env::vars().collect::<Vec<_>>());
     let state = AppState::create(None::<String>, Some("SATSBOX".to_owned())).await?;
-    Migrator::fresh(state.service.conn()).await?;
+    Migrator::fresh(state.service.db()).await?;
 
     Ok(state)
 }

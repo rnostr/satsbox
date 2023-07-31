@@ -26,7 +26,7 @@ async fn main() -> Result<()> {
 
     let args = Cli::parse();
     let state: AppState = AppState::create(args.config, Some("SATSBOX".to_string())).await?;
-    Migrator::up(state.service.conn(), None).await?;
+    Migrator::up(state.service.db(), None).await?;
     info!("Start satsbox server");
     start(state).await?;
     info!("Server shutdown");

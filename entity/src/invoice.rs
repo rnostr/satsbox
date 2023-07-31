@@ -3,14 +3,14 @@
 use sea_orm::entity::prelude::*;
 
 #[derive(EnumIter, DeriveActiveEnum, Debug, Clone, PartialEq, Eq)]
-#[sea_orm(rs_type = "u8", db_type = "SmallUnsigned")]
+#[sea_orm(rs_type = "i32", db_type = "Integer")]
 pub enum Type {
     Invoice = 0,
     Payment = 1,
 }
 
 #[derive(EnumIter, DeriveActiveEnum, Debug, Clone, PartialEq, Eq)]
-#[sea_orm(rs_type = "u8", db_type = "SmallUnsigned")]
+#[sea_orm(rs_type = "i32", db_type = "Integer")]
 pub enum Status {
     Unpaid = 0,
     Paid = 1,
