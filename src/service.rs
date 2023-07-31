@@ -105,7 +105,7 @@ impl Service {
             .create_invoice(memo.clone(), msats, Some(preimage.clone()), Some(expiry))
             .await?;
 
-        if &invoice.payment_hash != &hash {
+        if invoice.payment_hash != hash {
             return Err(Error::Str("invalid payment hash"));
         }
 
@@ -142,7 +142,7 @@ impl Service {
             }
 
             let mut invoice =
-                create_invoice_active_model(&user, vec![], inv, self.name.clone(), "".to_owned());
+                create_invoice_active_model(user, vec![], inv, self.name.clone(), "".to_owned());
             // payment
             invoice.r#type = Set(invoice::Type::Payment);
             invoice.lock_amount = Set(total);
@@ -190,7 +190,7 @@ impl Service {
                 Ok(p) => {
                     match p.status {
                         lightning::PaymentStatus::Succeeded => {
-                            pay_success(&self.db(), &p, &model).await
+                            pay_success(self.db(), &p, &model).await
                         }
                         lightning::PaymentStatus::Failed => {
                             // failed
@@ -426,7 +426,7 @@ async fn internal_pay(
 
     let time = now() as i64;
     let mut payment_model = create_invoice_active_model(
-        &user,
+        user,
         payee_inv.payment_preimage.clone(),
         inv,
         service,

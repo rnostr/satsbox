@@ -124,7 +124,7 @@ impl Fee {
     pub fn cal(&self, msats: i64, internal: bool) -> (i64, i64) {
         let fee_pct = if internal {
             self.internal_pct
-        } else if msats > 1000_000 {
+        } else if msats > 1_000_000 {
             self.pay_limit_pct
         } else {
             self.small_pay_limit_pct
