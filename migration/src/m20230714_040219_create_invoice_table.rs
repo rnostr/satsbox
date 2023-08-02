@@ -70,22 +70,22 @@ impl MigrationTrait for Migration {
                     )
                     .col(
                         ColumnDef::new(invoice::Column::CreatedAt)
-                            .big_unsigned()
+                            .big_integer()
                             .not_null(),
                     )
                     .col(
                         ColumnDef::new(invoice::Column::GeneratedAt)
-                            .big_unsigned()
+                            .big_integer()
                             .not_null(),
                     )
                     .col(
                         ColumnDef::new(invoice::Column::Expiry)
-                            .big_unsigned()
+                            .big_integer()
                             .not_null(),
                     )
                     .col(
                         ColumnDef::new(invoice::Column::ExpiredAt)
-                            .big_unsigned()
+                            .big_integer()
                             .not_null(),
                     )
                     .col(
@@ -96,32 +96,32 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(invoice::Column::Bolt11).text().not_null())
                     .col(
                         ColumnDef::new(invoice::Column::Amount)
-                            .big_unsigned()
+                            .big_integer()
                             .not_null(),
                     )
                     .col(
                         ColumnDef::new(invoice::Column::PaidAmount)
-                            .big_unsigned()
+                            .big_integer()
                             .not_null(),
                     )
                     .col(
                         ColumnDef::new(invoice::Column::Fee)
-                            .big_unsigned()
+                            .big_integer()
                             .not_null(),
                     )
                     .col(
                         ColumnDef::new(invoice::Column::Total)
-                            .big_unsigned()
+                            .big_integer()
                             .not_null(),
                     )
                     .col(
                         ColumnDef::new(invoice::Column::PaidAt)
-                            .big_unsigned()
+                            .big_integer()
                             .not_null(),
                     )
                     .col(
                         ColumnDef::new(invoice::Column::LockAmount)
-                            .big_unsigned()
+                            .big_integer()
                             .not_null()
                             .default(0),
                     )
@@ -139,7 +139,7 @@ impl MigrationTrait for Migration {
                     )
                     .col(
                         ColumnDef::new(invoice::Column::ServiceFee)
-                            .big_unsigned()
+                            .big_integer()
                             .not_null(),
                     )
                     .to_owned(),

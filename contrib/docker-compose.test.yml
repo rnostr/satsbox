@@ -100,3 +100,24 @@ services:
       - bitcoind
     depends_on:
       - bitcoind
+
+  pg:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: satsbox
+      POSTGRES_PASSWORD: test
+      POSTGRES_USER: test
+    ports:
+      - 8432:5432
+
+  mariadb:
+    image: mariadb:11
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: satsbox
+      MARIADB_ROOT_PASSWORD: test
+      MARIADB_USER: test
+      MARIADB_PASSWORD: test
+    ports:
+      - 8306:3306

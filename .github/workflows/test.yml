@@ -25,6 +25,12 @@ jobs:
       matrix:
         rust:
           - version: stable
+        db:
+          - memory
+          - sqlite
+          - postgres
+          - mariadb
+
     steps:
     - name: Checkout
       uses: actions/checkout@v3
@@ -60,6 +66,7 @@ jobs:
 
     - name: Tests
       run: |
+        source contrib/env.sh ${{ matrix.db }}
         cargo test -p lightning-client
         cargo test
 

@@ -9,7 +9,7 @@ services:
     restart: unless-stopped
     # https://github.com/lncm/docker-bitcoind
     image: lncm/bitcoind:v25.0
-    user: 1000:1000
+    #user: 1000:1000
     volumes:
       - ./data/bitcoin:/data/.bitcoin
     networks:
@@ -76,7 +76,7 @@ services:
     restart: unless-stopped
     image: lightninglabs/lnd:v0.16.4-beta
     ports:
-      - '10009:10009'
+      - 8009:10009
     command: 
       - --debuglevel=debug 
       - --alias=lnd 
@@ -129,7 +129,7 @@ services:
       - --channel-fee-max-proportional-thousandths=2
       - --grpc-port=10008
     ports:
-      - '10008:10008'
+      - 8008:10008
     volumes:
       - ./data/cln:/root/.lightning
     networks:
@@ -138,3 +138,28 @@ services:
       - bitcoind
     depends_on:
       - bitcoind
+
+  pg:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: satsbox
+      POSTGRES_PASSWORD: test
+      POSTGRES_USER: test
+    ports:
+      - 8432:5432
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+
+  mariadb:
+    image: mariadb:11
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: satsbox
+      MARIADB_ROOT_PASSWORD: test
+      MARIADB_USER: test
+      MARIADB_PASSWORD: test
+    ports:
+      - 8306:3306
+    volumes:
+      - ./data/mariadb:/var/lib/mysql

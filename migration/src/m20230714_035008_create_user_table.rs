@@ -26,13 +26,13 @@ impl MigrationTrait for Migration {
                     )
                     .col(
                         ColumnDef::new(user::Column::Balance)
-                            .big_unsigned()
+                            .big_integer()
                             .not_null()
                             .default(0),
                     )
                     .col(
                         ColumnDef::new(user::Column::LockAmount)
-                            .big_unsigned()
+                            .big_integer()
                             .not_null()
                             .default(0),
                     )
