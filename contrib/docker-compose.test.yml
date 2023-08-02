@@ -38,7 +38,7 @@ services:
     restart: unless-stopped
     image: lightninglabs/lnd:v0.16.4-beta
     ports:
-      - '10009:10009'
+      - 8009:10009
     command: 
       - --debuglevel=debug 
       - --alias=lnd 
@@ -91,7 +91,7 @@ services:
       - --channel-fee-max-proportional-thousandths=2
       - --grpc-port=10008
     ports:
-      - '10008:10008'
+      - 8008:10008
     #volumes:
     #  - ./data/cln:/root/.lightning
     networks:
