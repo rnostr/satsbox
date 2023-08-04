@@ -18,7 +18,7 @@ macro_rules! test_method {
 #[tokio::test]
 async fn timeout() -> Result<()> {
     dotenvy::from_filename(".test.env")?;
-    let client = util::connect_lnd(Some(Duration::from_nanos(10))).await?;
+    let client = util::connect_lnd(Some(Duration::from_nanos(1))).await?;
     lightning::timeout(&client).await?;
     Ok(())
 }
