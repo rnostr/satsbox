@@ -2,23 +2,31 @@
 
 use sea_orm::entity::prelude::*;
 
+/// Record of user balance changes
+
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq)]
-#[sea_orm(table_name = "users")]
+#[sea_orm(table_name = "records")]
 pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i64,
+    pub user_id: i64,
+
     #[sea_orm(column_type = "Binary(BlobSize::Blob(None))")]
-    pub pubkey: Vec<u8>,
-    /// user balance in msats
+    pub user_pubkey: Vec<u8>,
+
+    pub invoice_id: Option<i64>,
+
+    /// user current balance in msats
     pub balance: i64,
-    /// Number of balances temporarily locked at the time of payment
-    pub lock_amount: i64,
-    /// custom unique username
-    pub username: Option<String>,
+    /// balance change
+    pub change: i64,
+
+    pub source: String,
+
+    pub note: String,
 
     /// data create time
     pub created_at: i64,
-    pub updated_at: i64,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

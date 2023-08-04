@@ -91,7 +91,7 @@ async fn internal_payment() -> Result<()> {
     let payer_pubkey =
         hex::decode("000003a91077fc049b8371e7a523fb5dfd9daff4522aa3f510d02bc9f490ca36")?;
     let payer_user = service.get_or_create_user(payer_pubkey.clone()).await?;
-    let payer_user = service.update_user_balance(&payer_user, 1000).await?;
+
     let fee = Fee {
         pay_limit_pct: 1.0,
         small_pay_limit_pct: 2.0,
@@ -104,7 +104,9 @@ async fn internal_payment() -> Result<()> {
     // balance insufficient
     assert!(res.is_err());
     let balance = 5_000_000;
-    let payer_user = service.update_user_balance(&payer_user, balance).await?;
+    let payer_user = service
+        .admin_adjust_user_balance(&payer_user, balance, None)
+        .await?;
     // println!("{:?}", payer_user);
 
     // let payment = service
@@ -139,6 +141,7 @@ async fn internal_payment() -> Result<()> {
     assert_eq!(payment.service_fee, service_fee);
     assert_eq!(payment.amount, msats);
     assert_eq!(payment.paid_amount, msats);
+    assert_eq!(payment.total, msats + internal_fee + service_fee);
 
     assert!(payee_invoice.internal);
     assert_eq!(payee_invoice.status, invoice::Status::Paid);
@@ -201,7 +204,6 @@ async fn pay(payer: Lightning, payee: Lightning, test_sync: bool) -> Result<()> 
     let payer_user = payer_service
         .get_or_create_user(payer_pubkey.clone())
         .await?;
-    let payer_user = payer_service.update_user_balance(&payer_user, 1000).await?;
 
     let payee_invoice = payee_service
         .create_invoice(
@@ -227,7 +229,7 @@ async fn pay(payer: Lightning, payee: Lightning, test_sync: bool) -> Result<()> 
     assert!(res.is_err());
     let balance = 5_000_000;
     let payer_user = payer_service
-        .update_user_balance(&payer_user, balance)
+        .admin_adjust_user_balance(&payer_user, balance, None)
         .await?;
     // println!("{:?}", payer_user);
 
@@ -273,6 +275,7 @@ async fn pay(payer: Lightning, payee: Lightning, test_sync: bool) -> Result<()> 
     assert_eq!(payment.service_fee, service_fee);
     assert_eq!(payment.amount, msats);
     assert_eq!(payment.paid_amount, msats);
+    assert_eq!(payment.total, msats + real_fee + service_fee);
 
     assert!(!payee_invoice.internal);
     assert_eq!(payee_invoice.status, invoice::Status::Paid);
@@ -322,7 +325,9 @@ async fn duplicate_payment() -> Result<()> {
     let payer_user = service.get_or_create_user(payer_pubkey.clone()).await?;
     let balance: i64 = 5_000_000;
 
-    let payer_user = service.update_user_balance(&payer_user, balance).await?;
+    let payer_user = service
+        .admin_adjust_user_balance(&payer_user, balance, None)
+        .await?;
     let fee = Fee {
         pay_limit_pct: 1.0,
         small_pay_limit_pct: 2.0,

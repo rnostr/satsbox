@@ -2,6 +2,7 @@ pub use sea_orm_migration::prelude::*;
 
 mod m20230714_035008_create_user_table;
 mod m20230714_040219_create_invoice_table;
+mod m20230804_082552_create_record_table;
 
 pub struct Migrator;
 
@@ -11,6 +12,7 @@ impl MigratorTrait for Migrator {
         vec![
             Box::new(m20230714_035008_create_user_table::Migration),
             Box::new(m20230714_040219_create_invoice_table::Migration),
+            Box::new(m20230804_082552_create_record_table::Migration),
         ]
     }
 }

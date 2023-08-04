@@ -74,6 +74,11 @@ impl MigrationTrait for Migration {
                             .not_null(),
                     )
                     .col(
+                        ColumnDef::new(invoice::Column::UpdatedAt)
+                            .big_integer()
+                            .not_null(),
+                    )
+                    .col(
                         ColumnDef::new(invoice::Column::GeneratedAt)
                             .big_integer()
                             .not_null(),

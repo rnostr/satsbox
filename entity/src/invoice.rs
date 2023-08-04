@@ -48,6 +48,7 @@ pub struct Model {
 
     /// data create time
     pub created_at: i64,
+    pub updated_at: i64,
 
     /// invoice create time
     pub generated_at: i64,
@@ -65,6 +66,8 @@ pub struct Model {
     /// real paid amount
     pub paid_amount: i64,
     pub fee: i64,
+
+    /// payment amount + fee + service_fee
     pub total: i64,
     /// Number of balances temporarily locked at the time of payment
     pub lock_amount: i64,

@@ -1,5 +1,5 @@
 use crate::{now, setting::Fee, Error, Result};
-use entity::{invoice, user};
+use entity::{invoice, record, user};
 use lightning_client::{lightning, Lightning};
 use rand::RngCore;
 use sea_orm::{
@@ -56,28 +56,49 @@ impl Service {
             .await?)
     }
 
-    pub async fn update_user_balance(
+    pub async fn admin_adjust_user_balance(
         &self,
         user: &user::Model,
-        balance: i64,
+        change: i64,
+        note: Option<String>,
     ) -> Result<user::Model> {
-        Ok(user::ActiveModel {
-            id: Set(user.id),
-            balance: Set(balance),
-            ..Default::default()
+        let txn = self.db().begin().await?;
+
+        // update user balance
+        let res = user::Entity::update_many()
+            .col_expr(
+                user::Column::Balance,
+                Expr::col(user::Column::Balance).add(change),
+            )
+            .filter(user::Column::Id.eq(user.id))
+            .exec(&txn)
+            .await?;
+
+        if res.rows_affected != 1 {
+            return Err(Error::Str("update user balance error"));
         }
-        .update(self.db())
-        .await?)
+
+        new_record(user, None, change, "admin".to_owned(), note)
+            .insert(&txn)
+            .await?;
+        txn.commit().await?;
+        get_user_by_id(self.db(), user.id).await
     }
 
     pub async fn get_or_create_user(&self, pubkey: Vec<u8>) -> Result<user::Model> {
         match self.get_user(pubkey.clone()).await? {
             Some(u) => Ok(u),
             None => {
+                let now = now() as i64;
                 // create
                 Ok(user::ActiveModel {
                     pubkey: Set(pubkey.clone()),
-                    ..Default::default()
+                    id: NotSet,
+                    balance: NotSet,
+                    lock_amount: NotSet,
+                    username: NotSet,
+                    created_at: Set(now),
+                    updated_at: Set(now),
                 }
                 .insert(self.db())
                 .await?)
@@ -146,6 +167,7 @@ impl Service {
                 create_invoice_active_model(user, vec![], inv, self.name.clone(), "".to_owned());
             // payment
             invoice.r#type = Set(invoice::Type::Payment);
+            invoice.total = Set(total);
             invoice.lock_amount = Set(total);
             invoice.service_fee = Set(service_fee);
 
@@ -250,41 +272,10 @@ impl Service {
                             lightning::InvoiceStatus::Paid => {
                                 // updated paid
                                 updated += 1;
-                                let amount = remote.paid_amount as i64;
-
-                                let txn = self.db().begin().await?;
-                                // update payee invoice status
-                                let res = invoice::Entity::update_many()
-                                    .set(invoice::ActiveModel {
-                                        status: Set(invoice::Status::Paid),
-                                        paid_amount: Set(amount),
-                                        paid_at: Set(remote.paid_at as i64),
-                                        internal: Set(false),
-                                        ..Default::default()
-                                    })
-                                    .filter(invoice::Column::Id.eq(invoice.id))
-                                    .filter(invoice::Column::Status.eq(invoice::Status::Unpaid))
-                                    .exec(&txn)
-                                    .await?;
-
-                                if res.rows_affected == 1 {
-                                    // update user balance
-                                    let res = user::Entity::update_many()
-                                        .col_expr(
-                                            user::Column::Balance,
-                                            Expr::col(user::Column::Balance).add(amount),
-                                        )
-                                        .filter(user::Column::Id.eq(invoice.user_id))
-                                        .exec(&txn)
-                                        .await?;
-                                    if res.rows_affected != 1 {
-                                        // log err
-                                    }
-                                } else {
-                                    // log err
-                                }
-                                txn.commit().await?;
+                                // todo: log error
+                                let _r = invoice_paid(self.db(), invoice, remote).await;
                             }
+
                             lightning::InvoiceStatus::Canceled => {
                                 updated += 1;
                                 // expired
@@ -311,40 +302,8 @@ impl Service {
                             && !invoice.duplicate
                         {
                             updated += 1;
-                            let amount = remote.paid_amount as i64;
-
-                            let txn = self.db().begin().await?;
-                            // update payee invoice status
-                            let res = invoice::Entity::update_many()
-                                .set(invoice::ActiveModel {
-                                    paid_amount: Set(amount + invoice.paid_amount),
-                                    duplicate: Set(true),
-                                    ..Default::default()
-                                })
-                                .filter(invoice::Column::Id.eq(invoice.id))
-                                .filter(invoice::Column::Status.eq(invoice::Status::Paid))
-                                .filter(invoice::Column::Internal.eq(true))
-                                .filter(invoice::Column::Duplicate.eq(false))
-                                .exec(&txn)
-                                .await?;
-
-                            if res.rows_affected == 1 {
-                                // update user balance
-                                let res = user::Entity::update_many()
-                                    .col_expr(
-                                        user::Column::Balance,
-                                        Expr::col(user::Column::Balance).add(amount),
-                                    )
-                                    .filter(user::Column::Id.eq(invoice.user_id))
-                                    .exec(&txn)
-                                    .await?;
-                                if res.rows_affected != 1 {
-                                    // log err
-                                }
-                            } else {
-                                // log err
-                            }
-                            txn.commit().await?;
+                            // todo: log error
+                            let _r = invoice_dup_paid(self.db(), invoice, remote).await;
                         }
                     }
                     invoice::Status::Canceled => {
@@ -383,11 +342,13 @@ impl Service {
                             lightning::PaymentStatus::InFlight => {}
                             lightning::PaymentStatus::Succeeded => {
                                 updated += 1;
-                                pay_success(self.db(), remote, payment).await?;
+                                // todo: log error
+                                let _r = pay_success(self.db(), remote, payment).await;
                             }
                             lightning::PaymentStatus::Failed => {
                                 updated += 1;
-                                pay_failed(self.db(), payment).await?;
+                                // todo: log error
+                                let _r = pay_failed(self.db(), payment).await;
                             }
                         }
                     }
@@ -397,6 +358,121 @@ impl Service {
 
         Ok(updated)
     }
+}
+
+async fn invoice_dup_paid(
+    conn: &DbConn,
+    invoice: &invoice::Model,
+    remote: &lightning::Invoice,
+) -> Result<()> {
+    let amount = remote.paid_amount as i64;
+    let user = get_user_by_id(conn, invoice.user_id).await?;
+
+    let txn = conn.begin().await?;
+    // update payee invoice status
+    let res = invoice::Entity::update_many()
+        .set(invoice::ActiveModel {
+            paid_amount: Set(amount + invoice.paid_amount),
+            duplicate: Set(true),
+            ..Default::default()
+        })
+        .filter(invoice::Column::Id.eq(invoice.id))
+        .filter(invoice::Column::Status.eq(invoice::Status::Paid))
+        .filter(invoice::Column::Internal.eq(true))
+        .filter(invoice::Column::Duplicate.eq(false))
+        .exec(&txn)
+        .await?;
+
+    if res.rows_affected != 1 {
+        return Err(Error::InvalidPayment("Update invoice failed".to_owned()));
+    }
+
+    // update user balance
+    let res = user::Entity::update_many()
+        .col_expr(
+            user::Column::Balance,
+            Expr::col(user::Column::Balance).add(amount),
+        )
+        .filter(user::Column::Id.eq(invoice.user_id))
+        .exec(&txn)
+        .await?;
+
+    if res.rows_affected != 1 {
+        return Err(Error::InvalidPayment(
+            "Update user balance failed".to_owned(),
+        ));
+    }
+
+    new_record(
+        &user,
+        Some(invoice.id),
+        amount,
+        "duplicate_payment".to_owned(),
+        None,
+    )
+    .insert(&txn)
+    .await?;
+
+    txn.commit().await?;
+    Ok(())
+}
+
+async fn invoice_paid(
+    conn: &DbConn,
+    invoice: &invoice::Model,
+    remote: &lightning::Invoice,
+) -> Result<()> {
+    let amount = remote.paid_amount as i64;
+
+    let user = get_user_by_id(conn, invoice.user_id).await?;
+
+    let txn = conn.begin().await?;
+    // update payee invoice status
+    let res = invoice::Entity::update_many()
+        .set(invoice::ActiveModel {
+            status: Set(invoice::Status::Paid),
+            paid_amount: Set(amount),
+            paid_at: Set(remote.paid_at as i64),
+            internal: Set(false),
+            ..Default::default()
+        })
+        .filter(invoice::Column::Id.eq(invoice.id))
+        .filter(invoice::Column::Status.eq(invoice::Status::Unpaid))
+        .exec(&txn)
+        .await?;
+
+    if res.rows_affected != 1 {
+        return Err(Error::InvalidPayment("Update invoice failed".to_owned()));
+    }
+
+    // update user balance
+    let res = user::Entity::update_many()
+        .col_expr(
+            user::Column::Balance,
+            Expr::col(user::Column::Balance).add(amount),
+        )
+        .filter(user::Column::Id.eq(invoice.user_id))
+        .exec(&txn)
+        .await?;
+
+    if res.rows_affected != 1 {
+        return Err(Error::InvalidPayment(
+            "Update user balance failed".to_owned(),
+        ));
+    }
+
+    new_record(
+        &user,
+        Some(invoice.id),
+        amount,
+        "external_payment".to_owned(),
+        None,
+    )
+    .insert(&txn)
+    .await?;
+
+    txn.commit().await?;
+    Ok(())
 }
 
 async fn internal_pay(
@@ -420,6 +496,8 @@ async fn internal_pay(
         .one(conn)
         .await?
         .ok_or(Error::InvalidPayment("Can't find payee invoice".to_owned()))?;
+
+    let payee_user = get_user_by_id(conn, payee_inv.user_id).await?;
 
     if payee_inv.status != invoice::Status::Unpaid {
         return Err(Error::InvalidPayment("The invoice is closed.".to_owned()));
@@ -485,8 +563,18 @@ async fn internal_pay(
         return Err(Error::Str("The balance is insufficient or locked."));
     }
 
-    // Increase payee balance
+    // record user balance change
+    new_record(
+        user,
+        Some(payment.id),
+        -total,
+        "internal_payment".to_owned(),
+        None,
+    )
+    .insert(&txn)
+    .await?;
 
+    // Increase payee balance
     let res = user::Entity::update_many()
         .col_expr(
             user::Column::Balance,
@@ -498,6 +586,16 @@ async fn internal_pay(
     if res.rows_affected != 1 {
         return Err(Error::Str("unknown error. where is the user?"));
     }
+
+    new_record(
+        &payee_user,
+        Some(payee_inv.id),
+        amount,
+        "internal_payment".to_owned(),
+        None,
+    )
+    .insert(&txn)
+    .await?;
     txn.commit().await?;
 
     Ok(payment)
@@ -521,25 +619,31 @@ async fn pay_failed(conn: &DbConn, model: &invoice::Model) -> Result<()> {
         .filter(invoice::Column::LockAmount.eq(lock_amount))
         .exec(&txn)
         .await?;
-    // check had updated
-    if res.rows_affected == 1 {
-        // update user lock balance
-        let _res = user::Entity::update_many()
-            .col_expr(
-                user::Column::Balance,
-                Expr::col(user::Column::Balance).add(lock_amount),
-            )
-            .col_expr(
-                user::Column::LockAmount,
-                Expr::col(user::Column::LockAmount).sub(lock_amount),
-            )
-            .filter(user::Column::Id.eq(model.user_id))
-            .filter(user::Column::LockAmount.gte(lock_amount))
-            .exec(&txn)
-            .await?;
-        // if res.rows_affected != 1 {
-        // }
+    if res.rows_affected != 1 {
+        return Err(Error::InvalidPayment("Update invoice failed".to_owned()));
     }
+
+    // update user lock balance
+    let _res = user::Entity::update_many()
+        .col_expr(
+            user::Column::Balance,
+            Expr::col(user::Column::Balance).add(lock_amount),
+        )
+        .col_expr(
+            user::Column::LockAmount,
+            Expr::col(user::Column::LockAmount).sub(lock_amount),
+        )
+        .filter(user::Column::Id.eq(model.user_id))
+        .filter(user::Column::LockAmount.gte(lock_amount))
+        .exec(&txn)
+        .await?;
+
+    if res.rows_affected != 1 {
+        return Err(Error::InvalidPayment(
+            "Update user balance failed".to_owned(),
+        ));
+    }
+
     txn.commit().await?;
 
     Ok(())
@@ -552,6 +656,7 @@ async fn pay_success(
 ) -> Result<invoice::Model> {
     let lock_amount = model.lock_amount;
     let payback = lock_amount - model.service_fee - payment.total as i64;
+    let total = lock_amount - payback;
 
     let update = invoice::ActiveModel {
         payment_preimage: Set(payment.payment_preimage.clone()),
@@ -560,10 +665,12 @@ async fn pay_success(
         amount: Set(payment.amount as i64),
         paid_amount: Set(payment.amount as i64),
         fee: Set(payment.fee as i64),
-        total: Set(payment.total as i64),
+        total: Set(total as i64),
         paid_at: Set(payment.created_at as i64),
         ..Default::default()
     };
+
+    let user = get_user_by_id(conn, model.user_id).await?;
 
     let txn = conn.begin().await?;
 
@@ -574,30 +681,74 @@ async fn pay_success(
         .exec(&txn)
         .await?;
     // check had updated
-    if res.rows_affected == 1 {
-        // update user lock balance
-        let _res = user::Entity::update_many()
-            .col_expr(
-                user::Column::Balance,
-                Expr::col(user::Column::Balance).add(payback),
-            )
-            .col_expr(
-                user::Column::LockAmount,
-                Expr::col(user::Column::LockAmount).sub(lock_amount),
-            )
-            .filter(user::Column::Id.eq(model.user_id))
-            .filter(user::Column::LockAmount.gte(lock_amount))
-            .exec(&txn)
-            .await?;
-        // if res.rows_affected != 1 {
-        // }
+    if res.rows_affected != 1 {
+        return Err(Error::InvalidPayment("Update invoice failed".to_owned()));
     }
+    // update user lock balance
+    let _res = user::Entity::update_many()
+        .col_expr(
+            user::Column::Balance,
+            Expr::col(user::Column::Balance).add(payback),
+        )
+        .col_expr(
+            user::Column::LockAmount,
+            Expr::col(user::Column::LockAmount).sub(lock_amount),
+        )
+        .filter(user::Column::Id.eq(model.user_id))
+        .filter(user::Column::LockAmount.gte(lock_amount))
+        .exec(&txn)
+        .await?;
+    if res.rows_affected != 1 {
+        return Err(Error::InvalidPayment(
+            "Update user balance failed".to_owned(),
+        ));
+    }
+
+    // record user balance change
+    new_record(
+        &user,
+        Some(model.id),
+        -total,
+        "external_payment".to_owned(),
+        None,
+    )
+    .insert(&txn)
+    .await?;
+
     txn.commit().await?;
 
     invoice::Entity::find_by_id(model.id)
         .one(conn)
         .await?
         .ok_or(Error::Str("where is the invoice?"))
+}
+
+fn new_record(
+    user: &user::Model,
+    invoice_id: Option<i64>,
+    change: i64,
+    source: String,
+    note: Option<String>,
+) -> record::ActiveModel {
+    let now = now();
+    record::ActiveModel {
+        id: NotSet,
+        user_id: Set(user.id),
+        invoice_id: Set(invoice_id),
+        user_pubkey: Set(user.pubkey.clone()),
+        balance: Set(user.balance),
+        change: Set(change),
+        source: Set(source),
+        created_at: Set(now as i64),
+        note: Set(note.unwrap_or_default()),
+    }
+}
+
+async fn get_user_by_id(conn: &DbConn, id: i64) -> Result<user::Model> {
+    user::Entity::find_by_id(id)
+        .one(conn)
+        .await?
+        .ok_or(Error::Str("missing user"))
 }
 
 fn create_invoice_active_model(
@@ -607,6 +758,7 @@ fn create_invoice_active_model(
     service: String,
     source: String,
 ) -> invoice::ActiveModel {
+    let now = now();
     invoice::ActiveModel {
         id: NotSet,
         user_id: Set(user.id),
@@ -632,6 +784,7 @@ fn create_invoice_active_model(
         service_fee: Set(0),
         source: Set(source),
         service: Set(service),
-        created_at: Set(now() as i64),
+        created_at: Set(now as i64),
+        updated_at: Set(now as i64),
     }
 }
