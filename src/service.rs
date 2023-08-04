@@ -585,7 +585,7 @@ async fn pay_success(
                 user::Column::LockAmount,
                 Expr::col(user::Column::LockAmount).sub(lock_amount),
             )
-            .filter(user::Column::Pubkey.eq(model.user_pubkey.clone()))
+            .filter(user::Column::Id.eq(model.user_id))
             .filter(user::Column::LockAmount.gte(lock_amount))
             .exec(&txn)
             .await?;
