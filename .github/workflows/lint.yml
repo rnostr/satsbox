@@ -2,11 +2,11 @@ name: Lint
 
 on:
   push:
-    branches: 
+    branches:
       - main
       - dev
   pull_request:
-    branches: 
+    branches:
       - main
       - dev
 
@@ -34,5 +34,6 @@ jobs:
         with:
           toolchain: stable
           components: clippy
+      - name: Install dependences
+        run: sh ./contrib/ubuntu.sh
       - run: cargo clippy --workspace --all-features
-

@@ -2,11 +2,11 @@ name: Build
 
 on:
   push:
-    branches: 
+    branches:
       - main
       - dev
   pull_request:
-    branches: 
+    branches:
       - main
       - dev
 
@@ -21,6 +21,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: stable
+      - name: Install dependences
+        run: sh ./contrib/ubuntu.sh
       - run: cargo check --workspace --all-targets --all-features
 
   projects:
@@ -35,6 +37,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: stable
+      - name: Install dependences
+        run: sh ./contrib/ubuntu.sh
       - run: cargo check ${{ matrix.args }}
 
   platforms:
@@ -43,13 +47,15 @@ jobs:
       fail-fast: false
       # https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#choosing-github-hosted-runners
       matrix:
-        os: 
+        os:
           - macos-13
     steps:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: stable
+      - name: Install dependences
+        run: sh ./contrib/${{ matrix.os }}.sh
       - run: cargo check --workspace --all-targets --all-features
 
   toolchains:
@@ -57,7 +63,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        toolchain: 
+        toolchain:
           - stable
           - 1.67.0
 
@@ -66,4 +72,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.toolchain }}
+      - name: Install dependences
+        run: sh ./contrib/ubuntu.sh
       - run: cargo check --workspace --all-targets --all-features
