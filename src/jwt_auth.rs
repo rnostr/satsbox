@@ -6,7 +6,7 @@ use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
 use std::{future::Future, pin::Pin};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct AuthToken {
     // issued at
     pub iat: i64,
@@ -18,10 +18,12 @@ pub struct AuthToken {
 
 impl AuthToken {
     pub fn from_str(token: &str, secret: &[u8]) -> Result<Self> {
+        let mut validation = Validation::default();
+        validation.leeway = 0;
         Ok(jsonwebtoken::decode::<AuthToken>(
             token,
             &DecodingKey::from_secret(secret),
-            &Validation::default(),
+            &validation,
         )?
         .claims)
     }
@@ -42,6 +44,7 @@ impl AuthToken {
     }
 }
 
+#[derive(Debug)]
 pub struct AuthedUser {
     pub user: user::Model,
 }
@@ -74,5 +77,24 @@ impl FromRequest for AuthedUser {
             }
             Err(Error::Unauthorized)
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[tokio::test]
+    async fn token() -> Result<()> {
+        let token = AuthToken::generate(1, 3600, b"secret")?;
+        let auth = AuthToken::from_str(&token, b"secret")?;
+        assert_eq!(auth.user_id, 1);
+        // expired
+        let token = AuthToken::generate(1, 1, b"secret")?;
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        let res = AuthToken::from_str(&token, b"secret");
+        assert!(res.is_err());
+        Ok(())
     }
 }
