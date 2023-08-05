@@ -49,6 +49,10 @@ impl Service {
         Ok(self.lightning.get_info().await?)
     }
 
+    pub async fn get_user_by_id(&self, id: i64) -> Result<user::Model> {
+        get_user_by_id(self.db(), id).await
+    }
+
     pub async fn get_user(&self, pubkey: Vec<u8>) -> Result<Option<user::Model>> {
         Ok(user::Entity::find()
             .filter(user::Column::Pubkey.eq(pubkey))
@@ -665,7 +669,7 @@ async fn pay_success(
         amount: Set(payment.amount as i64),
         paid_amount: Set(payment.amount as i64),
         fee: Set(payment.fee as i64),
-        total: Set(total as i64),
+        total: Set(total),
         paid_at: Set(payment.created_at as i64),
         ..Default::default()
     };

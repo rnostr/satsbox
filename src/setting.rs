@@ -133,6 +133,30 @@ impl Fee {
     }
 }
 
+/// auth config
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(default)]
+pub struct Auth {
+    /// auth secret
+    pub secret: String,
+
+    /// jwt refresh token expiry in seconds
+    pub refresh_token_expiry: usize,
+
+    /// jwt access token expiry in seconds
+    pub access_token_expiry: usize,
+}
+
+impl Default for Auth {
+    fn default() -> Self {
+        Self {
+            secret: Default::default(),
+            refresh_token_expiry: 7 * 24 * 60 * 60,
+            access_token_expiry: 2 * 24 * 60 * 60,
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Setting {
@@ -148,6 +172,8 @@ pub struct Setting {
     pub lightning: Lightning,
     pub cln: Option<Cln>,
     pub lnd: Option<Lnd>,
+
+    pub auth: Auth,
 
     /// flatten extensions setting to json::Value
     #[serde(flatten)]
@@ -170,6 +196,7 @@ impl Default for Setting {
             fee: Default::default(),
             extra: Default::default(),
             extensions: Default::default(),
+            auth: Default::default(),
         }
     }
 }

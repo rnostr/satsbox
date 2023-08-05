@@ -2,6 +2,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 mod app;
 mod hash;
+mod jwt_auth;
 mod service;
 pub mod setting;
 
@@ -21,12 +22,16 @@ pub enum Error {
     Notify(#[from] notify::Error),
     #[error(transparent)]
     Json(#[from] serde_json::Error),
+    #[error(transparent)]
+    Jwt(#[from] jsonwebtoken::errors::Error),
     #[error("{0}")]
     Message(String),
     #[error("{0}")]
     Str(&'static str),
     #[error("{0}")]
     InvalidPayment(String),
+    #[error("Unauthorized")]
+    Unauthorized,
 }
 
 impl actix_web::ResponseError for Error {}

@@ -38,7 +38,16 @@ clap = { version = "4.2.7", features = ["derive"] }
 dotenvy = "0.15.7"
 sha2 = "0.10.7"
 rand = "0.8.5"
-tokio = { version = "1.29.1", features = ["rt", "rt-multi-thread", "net", "time", "macros", "fs"] }
+tokio = { version = "1.29.1", features = [
+    "rt",
+    "rt-multi-thread",
+    "net",
+    "time",
+    "macros",
+    "fs",
+] }
+jsonwebtoken = "8.3.0"
+actix-http = "3.3.1"
 
 [dev-dependencies]
 anyhow = "1.0.71"
