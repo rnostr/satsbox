@@ -16,6 +16,9 @@ pub struct Model {
     /// custom unique username
     pub username: Option<String>,
 
+    /// lndhub password
+    pub password: Option<String>,
+
     /// data create time
     pub created_at: i64,
     pub updated_at: i64,

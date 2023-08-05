@@ -246,6 +246,12 @@ impl Lightning for Lnd {
             id: hex::decode(info.identity_pubkey)?,
             alias: info.alias,
             color: info.color,
+            version: info.version,
+            num_active_channels: info.num_active_channels,
+            num_inactive_channels: info.num_inactive_channels,
+            num_pending_channels: info.num_pending_channels,
+            num_peers: info.num_peers,
+            block_height: info.block_height,
         })
     }
 

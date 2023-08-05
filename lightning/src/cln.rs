@@ -108,6 +108,12 @@ impl Lightning for Cln {
             id: info.id,
             color: String::from_utf8(info.color).unwrap_or_default(),
             alias: info.alias.unwrap_or_default(),
+            version: info.version,
+            num_active_channels: info.num_active_channels,
+            num_inactive_channels: info.num_inactive_channels,
+            num_pending_channels: info.num_pending_channels,
+            num_peers: info.num_peers,
+            block_height: info.blockheight,
         })
     }
 

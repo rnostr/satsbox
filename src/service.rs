@@ -89,6 +89,20 @@ impl Service {
         get_user_by_id(self.db(), user.id).await
     }
 
+    pub async fn update_user_password(
+        &self,
+        user_id: i64,
+        password: Option<String>,
+    ) -> Result<user::Model> {
+        Ok(user::ActiveModel {
+            id: Set(user_id),
+            password: Set(password),
+            ..Default::default()
+        }
+        .update(self.db())
+        .await?)
+    }
+
     pub async fn get_or_create_user(&self, pubkey: Vec<u8>) -> Result<user::Model> {
         match self.get_user(pubkey.clone()).await? {
             Some(u) => Ok(u),
@@ -101,6 +115,7 @@ impl Service {
                     balance: NotSet,
                     lock_amount: NotSet,
                     username: NotSet,
+                    password: NotSet,
                     created_at: Set(now),
                     updated_at: Set(now),
                 }

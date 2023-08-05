@@ -8,6 +8,12 @@ pub struct Info {
     pub id: Vec<u8>,
     pub alias: String,
     pub color: String,
+    pub num_peers: u32,
+    pub num_pending_channels: u32,
+    pub num_active_channels: u32,
+    pub num_inactive_channels: u32,
+    pub version: String,
+    pub block_height: u32,
 }
 
 #[derive(Copy, Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]

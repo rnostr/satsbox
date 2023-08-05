@@ -37,6 +37,7 @@ impl MigrationTrait for Migration {
                             .default(0),
                     )
                     .col(ColumnDef::new(user::Column::Username).string_len(50).null())
+                    .col(ColumnDef::new(user::Column::Password).string_len(50).null())
                     .col(
                         ColumnDef::new(user::Column::CreatedAt)
                             .big_integer()

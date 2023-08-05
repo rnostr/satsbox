@@ -1,4 +1,4 @@
-use crate::{setting::Setting, Error, Result, Service};
+use crate::{lndhub, setting::Setting, Error, Result, Service};
 use actix_web::{
     body::MessageBody,
     dev::{ServiceFactory, ServiceRequest},
@@ -13,7 +13,7 @@ pub mod route {
     use super::*;
     use actix_web::{get, HttpResponse};
 
-    pub fn init(cfg: &mut web::ServiceConfig) {
+    pub fn configure(cfg: &mut web::ServiceConfig) {
         cfg.service(info);
     }
 
@@ -100,7 +100,8 @@ pub fn create_web_app(
     WebApp::new()
         .app_data(data)
         .wrap(middleware::Logger::default()) // enable logger
-        .configure(route::init)
+        .configure(route::configure)
+        .configure(lndhub::configure)
 }
 
 pub async fn start(state: AppState) -> Result<()> {

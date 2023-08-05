@@ -3,6 +3,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 mod app;
 mod hash;
 mod jwt_auth;
+pub mod lndhub;
 mod service;
 pub mod setting;
 
