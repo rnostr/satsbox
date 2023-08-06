@@ -1,4 +1,5 @@
 use crate::{Error, Result};
+use dyn_clone::DynClone;
 use lightning_invoice::SignedRawBolt11Invoice;
 use serde::{Deserialize, Serialize};
 
@@ -140,7 +141,7 @@ impl Default for PaymentStatus {
 
 /// the lightning trait for multiple backends
 #[tonic::async_trait]
-pub trait Lightning {
+pub trait Lightning: DynClone {
     /// get lightning node info
     async fn get_info(&self) -> Result<Info>;
     /// create an invoice
@@ -169,6 +170,8 @@ pub trait Lightning {
     /// list payments by creation time
     async fn list_payments(&self, from: Option<u64>, to: Option<u64>) -> Result<Vec<Payment>>;
 }
+
+dyn_clone::clone_trait_object!(Lightning);
 
 #[cfg(test)]
 mod tests {
