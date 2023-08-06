@@ -28,6 +28,6 @@ async fn info() -> Result<()> {
         res.headers().get(actix_http::header::CONTENT_TYPE).unwrap(),
         "application/json"
     );
-    read_body_json::<satsbox::lndhub::Info, _>(res).await;
+    read_body_json::<lightning_client::lightning::Info, _>(res).await;
     Ok(())
 }

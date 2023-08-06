@@ -1,6 +1,6 @@
 use crate::{now, AppState, Error, Result};
 use actix_http::header::AUTHORIZATION;
-use actix_web::{dev::Payload, FromRequest, HttpRequest};
+use actix_web::{dev::Payload, web, FromRequest, HttpRequest};
 use entity::user;
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
@@ -65,11 +65,12 @@ impl FromRequest for AuthedUser {
     fn from_request(req: &HttpRequest, _pl: &mut Payload) -> Self::Future {
         let req = req.clone();
         Box::pin(async move {
-            if let Some(state) = req.app_data::<AppState>() {
+            if let Some(state) = req.app_data::<web::Data<AppState>>() {
                 if let Some(auth) = req.headers().get(AUTHORIZATION) {
                     if let Ok(auth) = auth.to_str() {
                         if auth.starts_with("bearer") || auth.starts_with("Bearer") {
                             let token = auth[6..auth.len()].trim();
+
                             return AuthedUser::from_token(token, state).await;
                         }
                     }

@@ -1,5 +1,6 @@
+use actix_web::{http::StatusCode, HttpResponse, ResponseError};
+use serde_json::json;
 use std::time::{SystemTime, UNIX_EPOCH};
-
 mod app;
 mod hash;
 mod jwt_auth;
@@ -25,6 +26,8 @@ pub enum Error {
     Json(#[from] serde_json::Error),
     #[error(transparent)]
     Jwt(#[from] jsonwebtoken::errors::Error),
+    #[error(transparent)]
+    Hex(#[from] hex::FromHexError),
     #[error("{0}")]
     Message(String),
     #[error("{0}")]
@@ -35,7 +38,20 @@ pub enum Error {
     Unauthorized,
 }
 
-impl actix_web::ResponseError for Error {}
+impl ResponseError for Error {
+    fn status_code(&self) -> StatusCode {
+        StatusCode::INTERNAL_SERVER_ERROR
+    }
+
+    /// Creates full response for error.
+    fn error_response(&self) -> HttpResponse {
+        HttpResponse::build(self.status_code()).json(json!({
+            "error": true,
+            "status_code": self.status_code().as_u16(),
+            "message": self.to_string()
+        }))
+    }
+}
 
 pub type Result<T, E = Error> = core::result::Result<T, E>;
 

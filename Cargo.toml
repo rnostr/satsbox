@@ -55,8 +55,6 @@ anyhow = "1.0.71"
 tempfile = "3.4.0"
 temp-env = "0.3.4"
 actix-rt = "2.8.0"
-actix-test = "0.1.1"
-hex = "0.4.3"
 
 [workspace]
 members = ["lightning", "migration", "entity"]

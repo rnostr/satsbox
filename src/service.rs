@@ -17,7 +17,7 @@ pub fn rand_preimage() -> Vec<u8> {
 
 type Lt = Box<dyn Lightning + Sync + Send>;
 /// Lightning service
-// #[derive(Clone)]
+#[derive(Clone)]
 pub struct Service {
     lightning: Lt,
     conn: DbConn,
