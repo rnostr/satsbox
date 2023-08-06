@@ -10,12 +10,18 @@ use actix_web::{
 };
 use entity::{invoice, user};
 use lightning_client::lightning;
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use serde::{Deserialize, Serialize};
+use serde_aux::prelude::deserialize_number_from_string;
 use serde_json::json;
 use std::{future::Future, pin::Pin};
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
-    cfg.service(get_info).service(auth).service(add_invoice);
+    cfg.service(get_info)
+        .service(auth)
+        .service(add_invoice)
+        .service(balance)
+        .service(get_user_invoices);
 }
 
 /// Lndhub authed user.
@@ -190,23 +196,43 @@ pub async fn auth(
 #[serde(default)]
 pub struct AddInvoiceReq {
     memo: String,
-    value: u64,
+    #[serde(deserialize_with = "deserialize_number_from_string")]
+    amt: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct AddInvoiceRes {
+pub struct InvoiceRes {
     payment_request: String,
     pay_req: String,
     #[serde(with = "hex::serde")]
     pub r_hash: Vec<u8>,
+    #[serde(with = "hex::serde")]
+    pub payment_hash: Vec<u8>,
+    pub description: String,
+    pub timestamp: i64,
+    pub r#type: String,
+    pub expire_time: i64,
+    pub amt: i64,
+    pub ispaid: bool,
 }
 
-impl From<invoice::Model> for AddInvoiceRes {
+impl From<invoice::Model> for InvoiceRes {
     fn from(value: invoice::Model) -> Self {
+        let t = match value.r#type {
+            invoice::Type::Invoice => "user_invoice".to_string(),
+            invoice::Type::Payment => "paid_invoice".to_string(),
+        };
         Self {
             payment_request: value.bolt11.clone(),
             pay_req: value.bolt11,
-            r_hash: value.payment_hash,
+            r_hash: value.payment_hash.clone(),
+            payment_hash: value.payment_hash,
+            description: value.description,
+            timestamp: value.generated_at,
+            r#type: t,
+            expire_time: value.expiry,
+            amt: value.paid_amount / 1000, // real received amount
+            ispaid: value.status == invoice::Status::Paid,
         }
     }
 }
@@ -217,14 +243,63 @@ pub async fn add_invoice(
     data: web::Json<AddInvoiceReq>,
     user: LndhubAuthedUser,
 ) -> Result<impl Responder, LndhubError> {
-    if data.value == 0 {
+    if data.amt == 0 {
         return Err(LndhubError::BadArguments);
     }
     let expiry = 3600 * 24; // one day
     let source = "lndhub".to_owned();
     let invoice = state
         .service
-        .create_invoice(&user.user, data.memo.clone(), data.value, expiry, source)
+        .create_invoice(
+            &user.user,
+            data.memo.clone(),
+            data.amt * 1000,
+            expiry,
+            source,
+        )
         .await?;
-    Ok(web::Json(AddInvoiceRes::from(invoice)))
+    Ok(web::Json(InvoiceRes::from(invoice)))
+}
+
+#[get("/balance")]
+pub async fn balance(
+    _state: web::Data<AppState>,
+    user: LndhubAuthedUser,
+) -> Result<impl Responder, LndhubError> {
+    // sats
+    let balance = (user.user.balance - user.user.lock_amount) / 1000;
+    Ok(web::Json(json!({
+        "BTC": {
+            "AvailableBalance": balance
+        }
+    })))
+}
+
+#[derive(Deserialize, Default)]
+#[serde(default)]
+pub struct InvoicesReq {
+    #[serde(deserialize_with = "deserialize_number_from_string")]
+    pub limit: u64,
+}
+
+#[get("/getuserinvoices")]
+pub async fn get_user_invoices(
+    state: web::Data<AppState>,
+    user: LndhubAuthedUser,
+    query: web::Query<InvoicesReq>,
+) -> Result<impl Responder, LndhubError> {
+    let mut limit = query.limit;
+    if limit == 0 {
+        limit = 1000;
+    }
+    let list = invoice::Entity::find()
+        .filter(invoice::Column::UserId.eq(user.user.id))
+        .filter(invoice::Column::Type.eq(invoice::Type::Invoice))
+        .limit(limit)
+        .order_by_desc(invoice::Column::Id)
+        .all(state.service.db())
+        .await
+        .map_err(Error::from)?;
+    let list = list.into_iter().map(InvoiceRes::from).collect::<Vec<_>>();
+    Ok(web::Json(json!(list)))
 }

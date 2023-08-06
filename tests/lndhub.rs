@@ -117,7 +117,9 @@ async fn auth() -> Result<()> {
     Ok(())
 }
 
-pub async fn create_authed_app() -> Result<(
+pub async fn create_authed_app(
+    balance: i64,
+) -> Result<(
     impl Service<Request, Response = ServiceResponse<impl MessageBody>, Error = actix_web::Error>,
     web::Data<AppState>,
     String,
@@ -138,7 +140,7 @@ pub async fn create_authed_app() -> Result<(
     // 5k sats
     state
         .service
-        .admin_adjust_user_balance(&user, 5_000_000, None)
+        .admin_adjust_user_balance(&user, balance, None)
         .await?;
 
     let (val, _) = util::post(
@@ -157,21 +159,58 @@ pub async fn create_authed_app() -> Result<(
 }
 
 #[actix_rt::test]
-async fn add_invoice() -> Result<()> {
-    let (app, _state, access_token) = create_authed_app().await?;
+async fn balance() -> Result<()> {
+    let msats = 5_000_000;
+    let (app, _state, access_token) = create_authed_app(msats).await?;
 
+    let (val, _) = util::auth_get(&app, "/balance", &access_token).await?;
+    assert_eq!(val["BTC"]["AvailableBalance"], json!(msats / 1000));
+    Ok(())
+}
+
+#[actix_rt::test]
+async fn add_invoice() -> Result<()> {
+    let (app, _state, access_token) = create_authed_app(5_000_000).await?;
+
+    let amt = 1_000;
     let (val, _) = util::auth_post(
         &app,
         "/addinvoice",
         &access_token,
         json!({
             "memo": "test",
-            "value": 1_000_000,
+            "amt": amt.to_string(), // lndhub use string
         }),
     )
     .await?;
     assert!(val["payment_request"].is_string());
     assert!(val["r_hash"].is_string());
     assert_eq!(val["payment_request"], val["pay_req"]);
+    assert_eq!(val["amt"], json!(amt));
+
+    sleep(Duration::from_secs(2)).await;
+
+    util::auth_post(
+        &app,
+        "/addinvoice",
+        &access_token,
+        json!({
+            "memo": "test",
+            "amt": amt, // test number
+        }),
+    )
+    .await?;
+
+    // list
+    let (val, _) = util::auth_get(&app, "/getuserinvoices", &access_token).await?;
+    assert!(val.is_array());
+    let ar = val.as_array().unwrap();
+    assert_eq!(ar.len(), 2);
+
+    let (val, _) = util::auth_get(&app, "/getuserinvoices?limit=1", &access_token).await?;
+    assert!(val.is_array());
+    let ar = val.as_array().unwrap();
+    assert_eq!(ar.len(), 1);
+
     Ok(())
 }
