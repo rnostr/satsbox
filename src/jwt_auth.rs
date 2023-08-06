@@ -1,5 +1,5 @@
 use crate::{now, AppState, Error, Result};
-use actix_http::header::AUTHORIZATION;
+use actix_web::http::header::AUTHORIZATION;
 use actix_web::{dev::Payload, web, FromRequest, HttpRequest};
 use entity::user;
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation};

@@ -47,7 +47,6 @@ tokio = { version = "1.29.1", features = [
     "fs",
 ] }
 jsonwebtoken = "8.3.0"
-actix-http = "3.3.1"
 hex = { version = "0.4.3", features = ["serde"] }
 
 [dev-dependencies]

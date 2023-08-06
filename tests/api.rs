@@ -25,7 +25,9 @@ async fn info() -> Result<()> {
     let res = call_service(&app, req).await;
     assert_eq!(res.status(), 200);
     assert_eq!(
-        res.headers().get(actix_http::header::CONTENT_TYPE).unwrap(),
+        res.headers()
+            .get(actix_web::http::header::CONTENT_TYPE)
+            .unwrap(),
         "application/json"
     );
     read_body_json::<lightning_client::lightning::Info, _>(res).await;

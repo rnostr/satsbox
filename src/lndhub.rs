@@ -4,9 +4,9 @@ use crate::{
     jwt_auth::{AuthToken, AuthedUser},
     AppState, Error, Result,
 };
-use actix_http::Payload;
 use actix_web::{
-    get, http::StatusCode, post, web, FromRequest, HttpRequest, HttpResponse, ResponseError,
+    dev::Payload, get, http::StatusCode, post, web, FromRequest, HttpRequest, HttpResponse,
+    ResponseError,
 };
 use entity::user;
 use lightning_client::lightning;

@@ -1,11 +1,11 @@
 #![allow(unused)]
 
-use actix_http::{body::MessageBody, header::AUTHORIZATION, Method};
 use actix_web::{
+    body::MessageBody,
     dev::ServiceResponse,
+    http::{header::AUTHORIZATION, Method},
     test::{read_body_json, TestRequest},
 };
-use anyhow::Result;
 use serde_json::Value;
 
 pub fn auth_get(path: &str, token: &String) -> TestRequest {
@@ -34,7 +34,9 @@ where
     B: MessageBody,
 {
     assert_eq!(
-        res.headers().get(actix_http::header::CONTENT_TYPE).unwrap(),
+        res.headers()
+            .get(actix_web::http::header::CONTENT_TYPE)
+            .unwrap(),
         "application/json"
     );
     read_body_json::<Value, _>(res).await
