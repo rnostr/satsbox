@@ -3,7 +3,7 @@ use serde_json::json;
 use std::time::{SystemTime, UNIX_EPOCH};
 mod app;
 mod hash;
-mod jwt_auth;
+mod auth;
 pub mod lndhub;
 mod service;
 pub mod setting;

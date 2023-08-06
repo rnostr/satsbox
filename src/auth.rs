@@ -70,7 +70,6 @@ impl FromRequest for AuthedUser {
                     if let Ok(auth) = auth.to_str() {
                         if auth.starts_with("bearer") || auth.starts_with("Bearer") {
                             let token = auth[6..auth.len()].trim();
-
                             return AuthedUser::from_token(token, state).await;
                         }
                     }

@@ -1,22 +1,25 @@
 //! lnd hub api
 
 use crate::{
-    jwt_auth::{AuthToken, AuthedUser},
+    auth::{AuthToken, AuthedUser},
     AppState, Error, Result,
 };
 use actix_web::{
     dev::Payload, get, http::StatusCode, post, web, FromRequest, HttpRequest, HttpResponse,
-    ResponseError,
+    Responder, ResponseError,
 };
-use entity::user;
+use entity::{invoice, user};
 use lightning_client::lightning;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::{future::Future, pin::Pin};
 
+pub fn configure(cfg: &mut web::ServiceConfig) {
+    cfg.service(get_info).service(auth).service(add_invoice);
+}
+
 /// Lndhub authed user.
 /// Requires password already set.
-
 #[derive(Debug)]
 pub struct LndhubAuthedUser {
     pub user: user::Model,
@@ -83,12 +86,8 @@ impl ResponseError for LndhubError {
     }
 }
 
-pub fn configure(cfg: &mut web::ServiceConfig) {
-    cfg.service(get_info).service(auth);
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Info {
+pub struct InfoRes {
     #[serde(with = "hex::serde")]
     pub identity_pubkey: Vec<u8>,
     pub alias: String,
@@ -101,7 +100,7 @@ pub struct Info {
     pub block_height: u32,
 }
 
-impl From<lightning::Info> for Info {
+impl From<lightning::Info> for InfoRes {
     fn from(value: lightning::Info) -> Self {
         Self {
             identity_pubkey: value.id,
@@ -121,9 +120,10 @@ impl From<lightning::Info> for Info {
 pub async fn get_info(
     state: web::Data<AppState>,
     _user: LndhubAuthedUser,
-) -> Result<HttpResponse, LndhubError> {
+) -> Result<impl Responder, LndhubError> {
     let info = state.service.info().await?;
-    Ok(HttpResponse::Ok().json(Info::from(info)))
+    Ok(web::Json(InfoRes::from(info)))
+    // Ok(HttpResponse::Ok().json(Info::from(info)))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -184,4 +184,47 @@ pub async fn auth(
         refresh_token,
         access_token,
     }))
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct AddInvoiceReq {
+    memo: String,
+    value: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AddInvoiceRes {
+    payment_request: String,
+    pay_req: String,
+    #[serde(with = "hex::serde")]
+    pub r_hash: Vec<u8>,
+}
+
+impl From<invoice::Model> for AddInvoiceRes {
+    fn from(value: invoice::Model) -> Self {
+        Self {
+            payment_request: value.bolt11.clone(),
+            pay_req: value.bolt11,
+            r_hash: value.payment_hash,
+        }
+    }
+}
+
+#[post("/addinvoice")]
+pub async fn add_invoice(
+    state: web::Data<AppState>,
+    data: web::Json<AddInvoiceReq>,
+    user: LndhubAuthedUser,
+) -> Result<impl Responder, LndhubError> {
+    if data.value == 0 {
+        return Err(LndhubError::BadArguments);
+    }
+    let expiry = 3600 * 24; // one day
+    let source = "lndhub".to_owned();
+    let invoice = state
+        .service
+        .create_invoice(&user.user, data.memo.clone(), data.value, expiry, source)
+        .await?;
+    Ok(web::Json(AddInvoiceRes::from(invoice)))
 }
