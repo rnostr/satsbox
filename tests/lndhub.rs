@@ -236,6 +236,16 @@ async fn payment() -> Result<()> {
     assert!(val["payment_request"].is_string());
     assert!(val["r_hash"].is_string());
     let payment_hash = val["r_hash"].as_str().unwrap().to_owned();
+    let bolt11 = val["payment_request"].as_str().unwrap().to_owned();
+
+    // checkpayment
+    let (val, _) = util::auth_get(
+        &app,
+        &format!("/checkpayment/{}", payment_hash),
+        &access_token,
+    )
+    .await?;
+    assert_eq!(val["paid"], json!(false));
 
     // self payment
 
@@ -244,7 +254,7 @@ async fn payment() -> Result<()> {
         "/payinvoice",
         &access_token,
         json!({
-            "invoice": val["payment_request"],
+            "invoice": bolt11,
             "amount": 0,
         }),
     )
@@ -252,6 +262,15 @@ async fn payment() -> Result<()> {
     // println!("val: {:?}", val);
     assert_eq!(val["num_satoshis"], json!(amt / 1000));
     assert_eq!(val["payment_hash"], json!(payment_hash));
+
+    // checkpayment
+    let (val, _) = util::auth_get(
+        &app,
+        &format!("/checkpayment/{}", payment_hash),
+        &access_token,
+    )
+    .await?;
+    assert_eq!(val["paid"], json!(true));
 
     // list
     let (val, _) = util::auth_get(&app, "/getuserinvoices", &access_token).await?;

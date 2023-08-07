@@ -25,7 +25,8 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .service(get_btc)
         .service(get_pending)
         .service(pay_invoice)
-        .service(get_txs);
+        .service(get_txs)
+        .service(check_payment);
 }
 
 /// Lndhub authed user.
@@ -405,7 +406,7 @@ pub async fn get_txs(
     }
     let list = invoice::Entity::find()
         .filter(invoice::Column::UserId.eq(user.user.id))
-        .filter(invoice::Column::Type.eq(invoice::Type::Invoice))
+        .filter(invoice::Column::Type.eq(invoice::Type::Payment))
         .offset(query.offset)
         .limit(limit)
         .order_by_desc(invoice::Column::Id)
@@ -414,6 +415,27 @@ pub async fn get_txs(
         .map_err(Error::from)?;
     let list = list.into_iter().map(PaymentRes::from).collect::<Vec<_>>();
     Ok(web::Json(json!(list)))
+}
+
+#[get("/checkpayment/{payment_hash}")]
+pub async fn check_payment(
+    state: web::Data<AppState>,
+    user: LndhubAuthedUser,
+    path: web::Path<String>,
+) -> Result<impl Responder, LndhubError> {
+    let invoice = invoice::Entity::find()
+        .filter(invoice::Column::UserId.eq(user.user.id))
+        .filter(invoice::Column::Type.eq(invoice::Type::Invoice))
+        .filter(
+            invoice::Column::PaymentHash.eq(hex::decode(path.into_inner()).map_err(Error::from)?),
+        )
+        .one(state.service.db())
+        .await
+        .map_err(Error::from)?
+        .ok_or(LndhubError::from(Error::Str("no found")))?;
+    Ok(web::Json(json!({
+        "paid": invoice.status == invoice::Status::Paid
+    })))
 }
 
 // backwards compatibility

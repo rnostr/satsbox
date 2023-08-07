@@ -103,6 +103,20 @@ impl Service {
         .await?)
     }
 
+    pub async fn update_user_name(
+        &self,
+        user_id: i64,
+        name: Option<String>,
+    ) -> Result<user::Model> {
+        Ok(user::ActiveModel {
+            id: Set(user_id),
+            username: Set(name),
+            ..Default::default()
+        }
+        .update(self.db())
+        .await?)
+    }
+
     pub async fn get_or_create_user(&self, pubkey: Vec<u8>) -> Result<user::Model> {
         match self.get_user(pubkey.clone()).await? {
             Some(u) => Ok(u),
