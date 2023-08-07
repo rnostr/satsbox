@@ -48,7 +48,10 @@ async fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
 
     let args = Cli::parse();
-    let state: AppState = AppState::create(args.config, Some("SATSBOX".to_string())).await?;
+    let mut state: AppState = AppState::create(args.config, Some("SATSBOX".to_string())).await?;
+    // public access
+    state.setting.network.host = "0.0.0.0".to_string();
+
     if args.fresh {
         Migrator::fresh(state.service.db()).await?;
     } else {
