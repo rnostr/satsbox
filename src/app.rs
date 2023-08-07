@@ -78,7 +78,8 @@ impl AppState {
             }
         };
 
-        let options = ConnectOptions::from(&setting.db_url);
+        let mut options = ConnectOptions::from(&setting.db_url);
+        options.sqlx_logging_level(tracing::log::LevelFilter::Debug);
         let conn = Database::connect(options).await?;
         let service = Service::new(conf.0, conf.1, conn);
 
