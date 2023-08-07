@@ -160,17 +160,18 @@ pub async fn create_authed_app(
 
 #[actix_rt::test]
 async fn balance() -> Result<()> {
-    let msats = 5_000_000;
-    let (app, _state, access_token) = create_authed_app(msats).await?;
+    let balance = 5_000_000;
+    let (app, _state, access_token) = create_authed_app(balance).await?;
 
     let (val, _) = util::auth_get(&app, "/balance", &access_token).await?;
-    assert_eq!(val["BTC"]["AvailableBalance"], json!(msats / 1000));
+    assert_eq!(val["BTC"]["AvailableBalance"], json!(balance / 1000));
     Ok(())
 }
 
 #[actix_rt::test]
-async fn add_invoice() -> Result<()> {
-    let (app, _state, access_token) = create_authed_app(5_000_000).await?;
+async fn invoice() -> Result<()> {
+    let balance = 5_000_000; // msats
+    let (app, _state, access_token) = create_authed_app(balance).await?;
 
     let amt = 1_000;
     let (val, _) = util::auth_post(
@@ -212,5 +213,64 @@ async fn add_invoice() -> Result<()> {
     let ar = val.as_array().unwrap();
     assert_eq!(ar.len(), 1);
 
+    Ok(())
+}
+
+#[actix_rt::test]
+async fn payment() -> Result<()> {
+    let balance = 5_000_000; // msats
+
+    let (app, state, access_token) = create_authed_app(balance).await?;
+
+    let amt = 1_000_000;
+    let (val, _) = util::auth_post(
+        &app,
+        "/addinvoice",
+        &access_token,
+        json!({
+            "memo": "test",
+            "amt": amt / 1000,
+        }),
+    )
+    .await?;
+    assert!(val["payment_request"].is_string());
+    assert!(val["r_hash"].is_string());
+    let payment_hash = val["r_hash"].as_str().unwrap().to_owned();
+
+    // self payment
+
+    let (val, _) = util::auth_post(
+        &app,
+        "/payinvoice",
+        &access_token,
+        json!({
+            "invoice": val["payment_request"],
+            "amount": 0,
+        }),
+    )
+    .await?;
+    // println!("val: {:?}", val);
+    assert_eq!(val["num_satoshis"], json!(amt / 1000));
+    assert_eq!(val["payment_hash"], json!(payment_hash));
+
+    // list
+    let (val, _) = util::auth_get(&app, "/getuserinvoices", &access_token).await?;
+    assert!(val.is_array());
+    let ar = val.as_array().unwrap();
+    assert_eq!(ar.len(), 1);
+    assert_eq!(ar[0]["ispaid"], json!(true));
+
+    let (val, _) = util::auth_get(&app, "/gettxs", &access_token).await?;
+    assert!(val.is_array());
+    let ar = val.as_array().unwrap();
+    assert_eq!(ar.len(), 1);
+    assert_eq!(ar[0]["payment_hash"], json!(payment_hash));
+
+    let fee = state.setting.fee.cal(amt, true);
+    let (val, _) = util::auth_get(&app, "/balance", &access_token).await?;
+    assert_eq!(
+        val["BTC"]["AvailableBalance"],
+        json!((balance - fee.0 - fee.1) / 1000)
+    );
     Ok(())
 }

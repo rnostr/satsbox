@@ -99,7 +99,13 @@ async fn internal_payment() -> Result<()> {
         service_pct: 0.3,
     };
     let res = service
-        .pay(&payer_user, payee_invoice.bolt11.clone(), &fee, false)
+        .pay(
+            &payer_user,
+            payee_invoice.bolt11.clone(),
+            &fee,
+            "test".to_string(),
+            false,
+        )
         .await;
     // balance insufficient
     assert!(res.is_err());
@@ -110,11 +116,23 @@ async fn internal_payment() -> Result<()> {
     // println!("{:?}", payer_user);
 
     // let payment = service
-    //     .pay(&payer_user, payee_invoice.bolt11.clone(), &fee, false)
+    //     .pay(&payer_user, payee_invoice.bolt11.clone(), &fee, "test".to_string(), false)
     //     .await?;
     let res = tokio::join!(
-        service.pay(&payer_user, payee_invoice.bolt11.clone(), &fee, false),
-        service.pay(&payer_user, payee_invoice.bolt11.clone(), &fee, false)
+        service.pay(
+            &payer_user,
+            payee_invoice.bolt11.clone(),
+            &fee,
+            "test".to_string(),
+            false
+        ),
+        service.pay(
+            &payer_user,
+            payee_invoice.bolt11.clone(),
+            &fee,
+            "test".to_string(),
+            false
+        )
     );
     let (_err, payment) = match res {
         (Err(err), Ok(payment)) => (err, payment),
@@ -152,10 +170,95 @@ async fn internal_payment() -> Result<()> {
 
     // repeat pay
     let res = service
-        .pay(&payer_user, payee_invoice.bolt11.clone(), &fee, false)
+        .pay(
+            &payer_user,
+            payee_invoice.bolt11.clone(),
+            &fee,
+            "test".to_string(),
+            false,
+        )
         .await;
     assert!(res.is_err());
     assert!(res.err().unwrap().to_string().contains("closed"));
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn self_payment() -> Result<()> {
+    let pubkey = hex::decode("000003a91077fc049b8371e7a523fb5dfd9daff4522aa3f510d02bc9f490ca35")?;
+    let expiry = 60 * 10;
+    let memo = "test".to_owned();
+    // 2k sats
+    let msats: i64 = 2_000_000;
+
+    let source = "test".to_owned();
+    let state = create_test_state(None).await?;
+
+    let service = &state.service;
+    let user = service.get_or_create_user(pubkey.clone()).await?;
+    let invoice = service
+        .create_invoice(&user, memo.clone(), msats as u64, expiry, source.clone())
+        .await?;
+    assert_eq!(invoice.status, invoice::Status::Unpaid);
+
+    let fee = Fee {
+        pay_limit_pct: 1.0,
+        small_pay_limit_pct: 2.0,
+        internal_pct: 0.5,
+        service_pct: 0.3,
+    };
+
+    let balance = 5_000_000;
+    let user = service
+        .admin_adjust_user_balance(&user, balance, None)
+        .await?;
+
+    let res = tokio::join!(
+        service.pay(
+            &user,
+            invoice.bolt11.clone(),
+            &fee,
+            "test".to_string(),
+            false
+        ),
+        service.pay(
+            &user,
+            invoice.bolt11.clone(),
+            &fee,
+            "test".to_string(),
+            false
+        )
+    );
+    let (_err, payment) = match res {
+        (Err(err), Ok(payment)) => (err, payment),
+        (Ok(payment), Err(err)) => (err, payment),
+        _ => {
+            panic!("repeated payment")
+        }
+    };
+
+    let (internal_fee, service_fee) = fee.cal(msats, true);
+
+    let invoice = service.get_invoice(invoice.id).await?.unwrap();
+    let user = service.get_user(pubkey).await?.unwrap();
+
+    assert_eq!(user.balance, balance - internal_fee - service_fee);
+
+    assert!(payment.internal);
+    assert_eq!(payment.status, invoice::Status::Paid);
+    assert_eq!(payment.fee, internal_fee);
+    assert_eq!(payment.service_fee, service_fee);
+    assert_eq!(payment.amount, msats);
+    assert_eq!(payment.paid_amount, msats);
+    assert_eq!(payment.total, msats + internal_fee + service_fee);
+
+    assert!(invoice.internal);
+    assert_eq!(invoice.status, invoice::Status::Paid);
+    assert_eq!(invoice.amount, msats);
+    assert_eq!(invoice.paid_amount, msats);
+
+    assert_eq!(payment.payment_preimage, invoice.payment_preimage);
 
     Ok(())
 }
@@ -223,7 +326,13 @@ async fn pay(payer: Lightning, payee: Lightning, test_sync: bool) -> Result<()> 
         service_pct: 0.3,
     };
     let res = payer_service
-        .pay(&payer_user, payee_invoice.bolt11.clone(), &fee, false)
+        .pay(
+            &payer_user,
+            payee_invoice.bolt11.clone(),
+            &fee,
+            "test".to_string(),
+            false,
+        )
         .await;
     // balance insufficient
     assert!(res.is_err());
@@ -234,11 +343,23 @@ async fn pay(payer: Lightning, payee: Lightning, test_sync: bool) -> Result<()> 
     // println!("{:?}", payer_user);
 
     // let payment = payer_service
-    //     .pay(&payer_user, payee_invoice.bolt11.clone(), &fee, false)
+    //     .pay(&payer_user, payee_invoice.bolt11.clone(), &fee, "test".to_string(), false)
     //     .await?;
     let res = tokio::join!(
-        payer_service.pay(&payer_user, payee_invoice.bolt11.clone(), &fee, test_sync),
-        payer_service.pay(&payer_user, payee_invoice.bolt11.clone(), &fee, test_sync)
+        payer_service.pay(
+            &payer_user,
+            payee_invoice.bolt11.clone(),
+            &fee,
+            "test".to_string(),
+            test_sync
+        ),
+        payer_service.pay(
+            &payer_user,
+            payee_invoice.bolt11.clone(),
+            &fee,
+            "test".to_string(),
+            test_sync
+        )
     );
 
     let (_err, payment) = match res {
@@ -286,7 +407,13 @@ async fn pay(payer: Lightning, payee: Lightning, test_sync: bool) -> Result<()> 
 
     // repeat pay
     let res = payee_service
-        .pay(&payer_user, payee_invoice.bolt11.clone(), &fee, false)
+        .pay(
+            &payer_user,
+            payee_invoice.bolt11.clone(),
+            &fee,
+            "test".to_string(),
+            false,
+        )
         .await;
     assert!(res.is_err());
     assert!(res.err().unwrap().to_string().contains("closed"));
@@ -336,11 +463,23 @@ async fn duplicate_payment() -> Result<()> {
     };
 
     // let payment = service
-    //     .pay(&payer_user, payee_invoice.bolt11.clone(), &fee, false)
+    //     .pay(&payer_user, payee_invoice.bolt11.clone(), &fee, "test".to_string(), false)
     //     .await?;
     let res = tokio::join!(
-        service.pay(&payer_user, payee_invoice.bolt11.clone(), &fee, false),
-        service.pay(&payer_user, payee_invoice.bolt11.clone(), &fee, false)
+        service.pay(
+            &payer_user,
+            payee_invoice.bolt11.clone(),
+            &fee,
+            "test".to_string(),
+            false
+        ),
+        service.pay(
+            &payer_user,
+            payee_invoice.bolt11.clone(),
+            &fee,
+            "test".to_string(),
+            false
+        )
     );
     let (_err, payment) = match res {
         (Err(err), Ok(payment)) => (err, payment),
@@ -389,7 +528,13 @@ async fn duplicate_payment() -> Result<()> {
 
     // repeat pay
     let res = service
-        .pay(&payer_user, payee_invoice.bolt11.clone(), &fee, false)
+        .pay(
+            &payer_user,
+            payee_invoice.bolt11.clone(),
+            &fee,
+            "test".to_string(),
+            false,
+        )
         .await;
     assert!(res.is_err());
     assert!(res.err().unwrap().to_string().contains("closed"));

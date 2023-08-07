@@ -34,6 +34,8 @@ pub enum Error {
     Str(&'static str),
     #[error("{0}")]
     InvalidPayment(String),
+    #[error("Payment is being processed, please check the result later")]
+    PaymentInProgress,
     #[error("Unauthorized")]
     Unauthorized,
 }

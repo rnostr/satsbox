@@ -21,7 +21,11 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .service(auth)
         .service(add_invoice)
         .service(balance)
-        .service(get_user_invoices);
+        .service(get_user_invoices)
+        .service(get_btc)
+        .service(get_pending)
+        .service(pay_invoice)
+        .service(get_txs);
 }
 
 /// Lndhub authed user.
@@ -261,6 +265,62 @@ pub async fn add_invoice(
     Ok(web::Json(InvoiceRes::from(invoice)))
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct PayInvoiceReq {
+    invoice: String,
+    #[serde(deserialize_with = "deserialize_number_from_string")]
+    amount: u64, // TODO: amt is used only for 'tip' invoices ?
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PayRes {
+    payment_request: String,
+    pay_req: String,
+    #[serde(with = "hex::serde")]
+    pub payment_hash: Vec<u8>,
+    pub description: String,
+    pub timestamp: i64,
+    pub num_satoshis: i64,
+    pub payment_error: String,
+    #[serde(with = "hex::serde")]
+    pub payment_preimage: Vec<u8>,
+}
+
+impl From<invoice::Model> for PayRes {
+    fn from(value: invoice::Model) -> Self {
+        Self {
+            payment_request: value.bolt11.clone(),
+            pay_req: value.bolt11,
+            payment_hash: value.payment_hash.clone(),
+            payment_preimage: value.payment_preimage,
+            description: value.description,
+            timestamp: value.generated_at,
+            num_satoshis: value.paid_amount / 1000, // real received amount
+            payment_error: "".to_string(),
+        }
+    }
+}
+
+#[post("/payinvoice")]
+pub async fn pay_invoice(
+    state: web::Data<AppState>,
+    data: web::Json<PayInvoiceReq>,
+    user: LndhubAuthedUser,
+) -> Result<impl Responder, LndhubError> {
+    let payment = state
+        .service
+        .pay(
+            &user.user,
+            data.invoice.clone(),
+            &state.setting.fee,
+            "lndhub".to_string(),
+            false,
+        )
+        .await?;
+    Ok(web::Json(PayRes::from(payment)))
+}
+
 #[get("/balance")]
 pub async fn balance(
     _state: web::Data<AppState>,
@@ -280,6 +340,8 @@ pub async fn balance(
 pub struct InvoicesReq {
     #[serde(deserialize_with = "deserialize_number_from_string")]
     pub limit: u64,
+    #[serde(deserialize_with = "deserialize_number_from_string")]
+    pub offset: u64,
 }
 
 #[get("/getuserinvoices")]
@@ -295,11 +357,75 @@ pub async fn get_user_invoices(
     let list = invoice::Entity::find()
         .filter(invoice::Column::UserId.eq(user.user.id))
         .filter(invoice::Column::Type.eq(invoice::Type::Invoice))
+        .offset(query.offset)
         .limit(limit)
         .order_by_desc(invoice::Column::Id)
         .all(state.service.db())
         .await
         .map_err(Error::from)?;
     let list = list.into_iter().map(InvoiceRes::from).collect::<Vec<_>>();
+    Ok(web::Json(json!(list)))
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PaymentRes {
+    payment_request: String,
+    #[serde(with = "hex::serde")]
+    pub payment_hash: Vec<u8>,
+    pub memo: String,
+    pub timestamp: i64,
+    pub value: i64,
+    pub fee: i64,
+    pub r#type: String,
+}
+
+impl From<invoice::Model> for PaymentRes {
+    fn from(value: invoice::Model) -> Self {
+        Self {
+            payment_request: value.bolt11.clone(),
+            payment_hash: value.payment_hash.clone(),
+            memo: value.description,
+            timestamp: value.generated_at,
+            value: value.paid_amount / 1000, // real received amount
+            r#type: "paid_invoice".to_string(),
+            fee: (value.fee + value.service_fee) / 1000,
+        }
+    }
+}
+
+#[get("/gettxs")]
+pub async fn get_txs(
+    state: web::Data<AppState>,
+    user: LndhubAuthedUser,
+    query: web::Query<InvoicesReq>,
+) -> Result<impl Responder, LndhubError> {
+    let mut limit = query.limit;
+    if limit == 0 {
+        limit = 1000;
+    }
+    let list = invoice::Entity::find()
+        .filter(invoice::Column::UserId.eq(user.user.id))
+        .filter(invoice::Column::Type.eq(invoice::Type::Invoice))
+        .offset(query.offset)
+        .limit(limit)
+        .order_by_desc(invoice::Column::Id)
+        .all(state.service.db())
+        .await
+        .map_err(Error::from)?;
+    let list = list.into_iter().map(PaymentRes::from).collect::<Vec<_>>();
+    Ok(web::Json(json!(list)))
+}
+
+// backwards compatibility
+
+#[get("/getbtc")]
+pub async fn get_btc(_user: LndhubAuthedUser) -> Result<impl Responder, LndhubError> {
+    let list: Vec<u8> = vec![];
+    Ok(web::Json(json!(list)))
+}
+
+#[get("/getpending")]
+pub async fn get_pending(_user: LndhubAuthedUser) -> Result<impl Responder, LndhubError> {
+    let list: Vec<u8> = vec![];
     Ok(web::Json(json!(list)))
 }

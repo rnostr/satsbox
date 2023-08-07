@@ -160,6 +160,7 @@ impl Service {
         user: &user::Model,
         bolt11: String,
         fee: &Fee,
+        source: String,
         ignore_result: bool,
     ) -> Result<invoice::Model> {
         let inv = lightning::Invoice::from_bolt11(bolt11.clone())?;
@@ -183,7 +184,7 @@ impl Service {
             }
 
             let mut invoice =
-                create_invoice_active_model(user, vec![], inv, self.name.clone(), "".to_owned());
+                create_invoice_active_model(user, vec![], inv, self.name.clone(), source);
             // payment
             invoice.r#type = Set(invoice::Type::Payment);
             invoice.total = Set(total);
@@ -243,7 +244,7 @@ impl Service {
                                 .unwrap_or(Error::Str("pay failed")))
                         }
                         _ => {
-                            Err(Error::Str("Payment in progress"))
+                            Err(Error::PaymentInProgress)
                             // will handle by the task.
                         }
                     }
