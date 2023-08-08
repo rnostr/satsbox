@@ -16,7 +16,7 @@ lightning-client = { version = "0.1.0", path = "./lightning" }
 migration = { version = "0.1.0", path = "./migration" }
 entity = { version = "0.1.0", path = "./entity" }
 thiserror = "1.0.43"
-sea-orm = { version = "0.11.3", features = [
+sea-orm = { version = "0.12.2", features = [
     "runtime-tokio-rustls",
     "sqlx-postgres",
     "sqlx-mysql",

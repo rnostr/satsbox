@@ -22,6 +22,7 @@ pub struct Service {
     lightning: Lt,
     conn: DbConn,
     name: String,
+    pub self_payment: bool,
 }
 
 impl Service {
@@ -30,6 +31,7 @@ impl Service {
             name,
             lightning,
             conn,
+            self_payment: false,
         }
     }
 
@@ -49,7 +51,7 @@ impl Service {
         Ok(self.lightning.get_info().await?)
     }
 
-    pub async fn get_user_by_id(&self, id: i64) -> Result<user::Model> {
+    pub async fn get_user_by_id(&self, id: i32) -> Result<user::Model> {
         get_user_by_id(self.db(), id).await
     }
 
@@ -91,7 +93,7 @@ impl Service {
 
     pub async fn update_user_password(
         &self,
-        user_id: i64,
+        user_id: i32,
         password: Option<String>,
     ) -> Result<user::Model> {
         Ok(user::ActiveModel {
@@ -105,7 +107,7 @@ impl Service {
 
     pub async fn update_user_name(
         &self,
-        user_id: i64,
+        user_id: i32,
         name: Option<String>,
     ) -> Result<user::Model> {
         Ok(user::ActiveModel {
@@ -139,7 +141,7 @@ impl Service {
         }
     }
 
-    pub async fn get_invoice(&self, id: i64) -> Result<Option<invoice::Model>> {
+    pub async fn get_invoice(&self, id: i32) -> Result<Option<invoice::Model>> {
         Ok(invoice::Entity::find_by_id(id).one(self.db()).await?)
     }
 
@@ -185,7 +187,15 @@ impl Service {
         }
         if info.id.eq(&inv.payee) {
             // internal payment
-            internal_pay(&self.conn, user, inv, fee, self.name.clone()).await
+            internal_pay(
+                &self.conn,
+                user,
+                inv,
+                fee,
+                self.name.clone(),
+                self.self_payment,
+            )
+            .await
         } else {
             // external payment
             let payment_hash = inv.payment_hash.clone();
@@ -227,10 +237,16 @@ impl Service {
             }
 
             // create payment
-            let model = invoice
-                .insert(&txn)
-                .await
-                .map_err(|e| Error::InvalidPayment(e.to_string()))?;
+            let model = invoice.insert(&txn).await.map_err(|e| {
+                if matches!(
+                    e.sql_err(),
+                    Some(sea_orm::SqlErr::UniqueConstraintViolation(_))
+                ) {
+                    Error::InvalidPayment("The payment already exists.".to_owned())
+                } else {
+                    Error::InvalidPayment(e.to_string())
+                }
+            })?;
             txn.commit().await?;
 
             // try pay
@@ -515,6 +531,7 @@ async fn internal_pay(
     inv: lightning::Invoice,
     fee: &Fee,
     service: String,
+    self_payment: bool,
 ) -> Result<invoice::Model> {
     let payment_hash = inv.payment_hash.clone();
     let amount = inv.amount as i64;
@@ -530,6 +547,12 @@ async fn internal_pay(
         .one(conn)
         .await?
         .ok_or(Error::InvalidPayment("Can't find payee invoice".to_owned()))?;
+
+    if !self_payment && payee_inv.user_id == user.id {
+        return Err(Error::InvalidPayment(
+            "Not allowed to pay yourself.".to_owned(),
+        ));
+    }
 
     let payee_user = get_user_by_id(conn, payee_inv.user_id).await?;
 
@@ -759,7 +782,7 @@ async fn pay_success(
 
 fn new_record(
     user: &user::Model,
-    invoice_id: Option<i64>,
+    invoice_id: Option<i32>,
     change: i64,
     source: String,
     note: Option<String>,
@@ -778,7 +801,7 @@ fn new_record(
     }
 }
 
-async fn get_user_by_id(conn: &DbConn, id: i64) -> Result<user::Model> {
+async fn get_user_by_id(conn: &DbConn, id: i32) -> Result<user::Model> {
     user::Entity::find_by_id(id)
         .one(conn)
         .await?

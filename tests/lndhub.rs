@@ -124,7 +124,9 @@ pub async fn create_authed_app(
     web::Data<AppState>,
     String,
 )> {
-    let state = web::Data::new(create_test_state().await.unwrap());
+    let mut state = create_test_state().await.unwrap();
+    state.service.self_payment = true;
+    let state = web::Data::new(state);
 
     let app = init_service(create_web_app(state.clone())).await;
     sleep(Duration::from_millis(50)).await;

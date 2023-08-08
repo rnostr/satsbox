@@ -13,7 +13,7 @@ pub struct AuthToken {
     // expiration
     pub exp: i64,
     // data
-    pub user_id: i64,
+    pub user_id: i32,
 }
 
 impl AuthToken {
@@ -28,7 +28,7 @@ impl AuthToken {
         .claims)
     }
 
-    pub fn generate(user_id: i64, expiry: usize, secret: &[u8]) -> Result<String> {
+    pub fn generate(user_id: i32, expiry: usize, secret: &[u8]) -> Result<String> {
         let now = now() as i64;
         let payload = AuthToken {
             iat: now,

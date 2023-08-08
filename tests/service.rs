@@ -193,7 +193,8 @@ async fn self_payment() -> Result<()> {
     let msats: i64 = 2_000_000;
 
     let source = "test".to_owned();
-    let state = create_test_state(None).await?;
+    let mut state = create_test_state(None).await?;
+    state.service.self_payment = true;
 
     let service = &state.service;
     let user = service.get_or_create_user(pubkey.clone()).await?;
@@ -406,7 +407,7 @@ async fn pay(payer: Lightning, payee: Lightning, test_sync: bool) -> Result<()> 
     assert_eq!(payment.payment_preimage, payee_invoice.payment_preimage);
 
     // repeat pay
-    let res = payee_service
+    let res = payer_service
         .pay(
             &payer_user,
             payee_invoice.bolt11.clone(),
@@ -416,7 +417,7 @@ async fn pay(payer: Lightning, payee: Lightning, test_sync: bool) -> Result<()> 
         )
         .await;
     assert!(res.is_err());
-    assert!(res.err().unwrap().to_string().contains("closed"));
+    assert!(res.err().unwrap().to_string().contains("exists"));
 
     Ok(())
 }

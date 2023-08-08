@@ -22,9 +22,9 @@ pub enum Status {
 #[sea_orm(table_name = "invoices")]
 pub struct Model {
     #[sea_orm(primary_key)]
-    pub id: i64,
+    pub id: i32,
 
-    pub user_id: i64,
+    pub user_id: i32,
 
     #[sea_orm(column_type = "Binary(BlobSize::Blob(None))")]
     pub user_pubkey: Vec<u8>,

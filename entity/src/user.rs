@@ -6,7 +6,7 @@ use sea_orm::entity::prelude::*;
 #[sea_orm(table_name = "users")]
 pub struct Model {
     #[sea_orm(primary_key)]
-    pub id: i64,
+    pub id: i32,
     #[sea_orm(column_type = "Binary(BlobSize::Blob(None))")]
     pub pubkey: Vec<u8>,
     /// user balance in msats
