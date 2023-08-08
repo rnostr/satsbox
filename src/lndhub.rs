@@ -109,6 +109,7 @@ pub struct InfoRes {
     pub num_inactive_channels: u32,
     pub version: String,
     pub block_height: u32,
+    pub uris: Vec<String>,
 }
 
 impl From<lightning::Info> for InfoRes {
@@ -123,6 +124,7 @@ impl From<lightning::Info> for InfoRes {
             num_inactive_channels: value.num_inactive_channels,
             version: value.version,
             block_height: value.block_height,
+            uris: vec![],
         }
     }
 }
@@ -133,7 +135,13 @@ pub async fn get_info(
     _user: LndhubAuthedUser,
 ) -> Result<impl Responder, LndhubError> {
     let info = state.service.info().await?;
-    Ok(web::Json(InfoRes::from(info)))
+    let mut info = InfoRes::from(info);
+    info.uris.push(format!(
+        "{}@{}",
+        hex::encode(&info.identity_pubkey),
+        state.setting.lightning_node
+    ));
+    Ok(web::Json(info))
     // Ok(HttpResponse::Ok().json(Info::from(info)))
 }
 

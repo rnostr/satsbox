@@ -170,6 +170,8 @@ pub struct Setting {
     pub network: Network,
 
     pub lightning: Lightning,
+    pub lightning_node: String,
+
     pub cln: Option<Cln>,
     pub lnd: Option<Lnd>,
 
@@ -190,6 +192,7 @@ impl Default for Setting {
             db_url: "sqlite://satsbox.sqlite".to_string(),
             cln: None,
             lnd: None,
+            lightning_node: "127.0.0.1:9735".to_string(),
             lightning: Default::default(),
             thread: Default::default(),
             network: Default::default(),
