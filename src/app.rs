@@ -1,4 +1,4 @@
-use crate::{lndhub, setting::Setting, Error, Result, Service};
+use crate::{api, lndhub, setting::Setting, Error, Result, Service};
 use actix_web::{
     body::MessageBody,
     dev::{ServiceFactory, ServiceRequest},
@@ -8,21 +8,6 @@ use lightning_client::{Cln, Lightning, Lnd};
 use sea_orm::{ConnectOptions, Database};
 use std::{path::Path, time::Duration};
 use tracing::info;
-
-pub mod route {
-    use super::*;
-    use actix_web::{get, HttpResponse};
-
-    pub fn configure(cfg: &mut web::ServiceConfig) {
-        cfg.service(info);
-    }
-
-    #[get("/info")]
-    pub async fn info(data: web::Data<AppState>) -> Result<HttpResponse, Error> {
-        let info = data.service.info().await?;
-        Ok(HttpResponse::Ok().json(info))
-    }
-}
 
 pub struct AppState {
     pub service: Service,
@@ -101,8 +86,8 @@ pub fn create_web_app(
     WebApp::new()
         .app_data(data)
         .wrap(middleware::Logger::default()) // enable logger
-        .configure(route::configure)
         .configure(lndhub::configure)
+        .service(web::scope("/v1").configure(api::configure))
 }
 
 pub async fn start(state: AppState) -> Result<()> {

@@ -1,7 +1,7 @@
 //! lnd hub api
 
 use crate::{
-    auth::{AuthToken, AuthedUser},
+    auth::{AuthError, AuthedUser, JwtToken},
     AppState, Error, Result,
 };
 use actix_web::{
@@ -42,7 +42,7 @@ impl TryFrom<AuthedUser> for LndhubAuthedUser {
         if user.user.password.is_some() {
             Ok(LndhubAuthedUser { user: user.user })
         } else {
-            Err(Error::Unauthorized.into())
+            Err(Error::from(AuthError::Invalid("Unauthorized")).into())
         }
     }
 }
@@ -52,12 +52,7 @@ impl FromRequest for LndhubAuthedUser {
     type Future = Pin<Box<dyn Future<Output = Result<LndhubAuthedUser, LndhubError>>>>;
     fn from_request(req: &HttpRequest, pl: &mut Payload) -> Self::Future {
         let fut = AuthedUser::from_request(req, pl);
-        Box::pin(async move {
-            if let Ok(user) = fut.await {
-                return LndhubAuthedUser::try_from(user);
-            }
-            Err(Error::Unauthorized.into())
-        })
+        Box::pin(async move { LndhubAuthedUser::try_from(fut.await?) })
     }
 }
 
@@ -74,7 +69,7 @@ pub enum LndhubError {
 impl LndhubError {
     pub fn code(&self) -> u16 {
         match self {
-            LndhubError::Base(Error::Unauthorized) => 1,
+            LndhubError::Base(Error::Auth(_)) => 1,
             LndhubError::BadAuth => 1,
             LndhubError::BadArguments => 8,
             LndhubError::Base(_) => 6,
@@ -187,17 +182,19 @@ pub async fn auth(
         return Err(LndhubError::BadArguments);
     };
 
-    let refresh_token = AuthToken::generate(
+    let refresh_token = JwtToken::generate(
         user.id,
         state.setting.auth.refresh_token_expiry,
         state.setting.auth.secret.as_bytes(),
-    )?;
+    )
+    .map_err(Error::from)?;
 
-    let access_token = AuthToken::generate(
+    let access_token = JwtToken::generate(
         user.id,
         state.setting.auth.access_token_expiry,
         state.setting.auth.secret.as_bytes(),
-    )?;
+    )
+    .map_err(Error::from)?;
 
     Ok(HttpResponse::Ok().json(AuthRes {
         refresh_token,

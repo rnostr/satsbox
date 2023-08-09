@@ -1,4 +1,4 @@
-use crate::{now, setting::Fee, Error, Result};
+use crate::{now, setting::Fee, sha256, Error, Result};
 use entity::{invoice, record, user};
 use lightning_client::{lightning, Lightning};
 use rand::RngCore;
@@ -6,7 +6,7 @@ use sea_orm::{
     sea_query::Expr, ActiveModelTrait, ColumnTrait, DbConn, EntityTrait, NotSet, QueryFilter,
     QueryOrder, Set, TransactionTrait,
 };
-use sha2::{Digest, Sha256};
+
 use std::collections::HashMap;
 
 pub fn rand_preimage() -> Vec<u8> {
@@ -154,9 +154,7 @@ impl Service {
         source: String,
     ) -> Result<invoice::Model> {
         let preimage = rand_preimage();
-        let mut hasher = Sha256::new();
-        hasher.update(preimage.clone());
-        let hash = hasher.finalize().to_vec();
+        let hash = sha256(&preimage);
         let invoice = self
             .lightning
             .create_invoice(memo.clone(), msats, Some(preimage.clone()), Some(expiry))

@@ -1,4 +1,5 @@
 //! Rnostr cli
+
 use clap::Parser;
 use migration::{Migrator, MigratorTrait};
 use satsbox::*;

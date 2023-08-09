@@ -1,4 +1,4 @@
-use crate::{now, AppState, Error, Result};
+use crate::{auth::AuthError, now, AppState, Error, Result};
 use actix_web::http::header::AUTHORIZATION;
 use actix_web::{dev::Payload, web, FromRequest, HttpRequest};
 use entity::user;
@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::{future::Future, pin::Pin};
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct AuthToken {
+pub struct JwtToken {
     // issued at
     pub iat: i64,
     // expiration
@@ -16,21 +16,23 @@ pub struct AuthToken {
     pub user_id: i32,
 }
 
-impl AuthToken {
-    pub fn from_str(token: &str, secret: &[u8]) -> Result<Self> {
+impl JwtToken {
+    pub fn from_str(token: &str, secret: &[u8]) -> Result<Self, AuthError> {
         let mut validation = Validation::default();
         validation.leeway = 0;
-        Ok(jsonwebtoken::decode::<AuthToken>(
-            token,
-            &DecodingKey::from_secret(secret),
-            &validation,
-        )?
-        .claims)
+        Ok(
+            jsonwebtoken::decode::<JwtToken>(
+                token,
+                &DecodingKey::from_secret(secret),
+                &validation,
+            )?
+            .claims,
+        )
     }
 
-    pub fn generate(user_id: i32, expiry: usize, secret: &[u8]) -> Result<String> {
+    pub fn generate(user_id: i32, expiry: usize, secret: &[u8]) -> Result<String, AuthError> {
         let now = now() as i64;
-        let payload = AuthToken {
+        let payload = JwtToken {
             iat: now,
             exp: now + expiry as i64,
             user_id,
@@ -50,8 +52,8 @@ pub struct AuthedUser {
 }
 
 impl AuthedUser {
-    pub async fn from_token(token: &str, state: &AppState) -> Result<Self> {
-        let token = AuthToken::from_str(token, state.setting.auth.secret.as_bytes())?;
+    pub async fn from_token(token: &str, state: &AppState) -> Result<Self, Error> {
+        let token = JwtToken::from_str(token, state.setting.auth.secret.as_bytes())?;
         let user = state.service.get_user_by_id(token.user_id).await?;
         Ok(Self { user })
     }
@@ -75,7 +77,7 @@ impl FromRequest for AuthedUser {
                     }
                 }
             }
-            Err(Error::Unauthorized)
+            Err(AuthError::Invalid("missing auth token").into())
         })
     }
 }
@@ -86,14 +88,14 @@ mod tests {
     use std::time::Duration;
 
     #[tokio::test]
-    async fn token() -> Result<()> {
-        let token = AuthToken::generate(1, 3600, b"secret")?;
-        let auth = AuthToken::from_str(&token, b"secret")?;
+    async fn token() -> anyhow::Result<()> {
+        let token = JwtToken::generate(1, 3600, b"secret")?;
+        let auth = JwtToken::from_str(&token, b"secret")?;
         assert_eq!(auth.user_id, 1);
         // expired
-        let token = AuthToken::generate(1, 1, b"secret")?;
+        let token = JwtToken::generate(1, 1, b"secret")?;
         tokio::time::sleep(Duration::from_secs(2)).await;
-        let res = AuthToken::from_str(&token, b"secret");
+        let res = JwtToken::from_str(&token, b"secret");
         assert!(res.is_err());
         Ok(())
     }
