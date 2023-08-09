@@ -19,11 +19,7 @@ impl MigrationTrait for Migration {
                             .auto_increment()
                             .primary_key(),
                     )
-                    .col(
-                        ColumnDef::new(invoice::Column::UserId)
-                            .big_integer()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(invoice::Column::UserId).integer().not_null())
                     .col(
                         ColumnDef::new(invoice::Column::UserPubkey)
                             .binary_len(32)
