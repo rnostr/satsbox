@@ -2,22 +2,15 @@ use actix_rt::time::sleep;
 use actix_web::{http::header::AUTHORIZATION, test::init_service, web};
 use anyhow::Result;
 use base64::engine::{general_purpose, Engine};
-use migration::{Migrator, MigratorTrait};
 use nostr_sdk::{secp256k1::SecretKey, EventBuilder, Keys, Kind, Tag};
-use satsbox::{create_web_app, sha256, AppState};
+use satsbox::{create_web_app, sha256};
 use serde_json::json;
 use std::{str::FromStr, time::Duration};
+use util::create_test_state;
 
 mod util;
 
 const ALICE_SK: &str = "6b911fd37cdf5c81d4c0adb1ab7fa822ed253ab0ad9aa18d77257c88b29b718e";
-
-async fn create_test_state() -> Result<AppState> {
-    dotenvy::from_filename(".test.env")?;
-    let state = AppState::create(None::<String>, Some("SATSBOX".to_owned())).await?;
-    Migrator::fresh(state.service.db()).await?;
-    Ok(state)
-}
 
 #[actix_rt::test]
 async fn info() -> Result<()> {

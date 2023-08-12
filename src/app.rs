@@ -1,4 +1,4 @@
-use crate::{api, lndhub, setting::Setting, Error, Result, Service};
+use crate::{api, lndhub, nwc::Nwc, setting::Setting, Error, Result, Service};
 use actix_web::{
     body::MessageBody,
     dev::{ServiceFactory, ServiceRequest},
@@ -6,7 +6,7 @@ use actix_web::{
 };
 use lightning_client::{Cln, Lightning, Lnd};
 use sea_orm::{ConnectOptions, Database};
-use std::{path::Path, time::Duration};
+use std::{path::Path, sync::Arc, time::Duration};
 use tracing::info;
 
 pub struct AppState {
@@ -39,6 +39,9 @@ impl AppState {
             info!("Load default config");
             Setting::default()
         };
+
+        info!("{:?}", setting);
+
         Self::from_setting(setting).await
     }
 
@@ -64,7 +67,7 @@ impl AppState {
         };
 
         let mut options = ConnectOptions::from(&setting.db_url);
-        options.sqlx_logging_level(tracing::log::LevelFilter::Debug);
+        options.sqlx_logging_level(tracing::log::LevelFilter::Trace);
         let conn = Database::connect(options).await?;
         let service = Service::new(conf.0, conf.1, conn);
 
@@ -90,17 +93,40 @@ pub fn create_web_app(
         .service(web::scope("/v1").configure(api::configure))
 }
 
+/// start the service sync task for sync invoices and payments from lightning node.
+pub fn start_service_sync(state: Arc<AppState>) {
+    let _r = tokio::spawn(async move {
+        state
+            .service
+            .sync(Duration::from_secs(5), Duration::from_secs(60 * 60 * 25))
+            .await
+    });
+}
+
+/// start nwc task
+pub async fn start_nwc(state: Arc<AppState>) -> Result<()> {
+    let nwc = Nwc::new(state);
+    nwc.connect().await?;
+    tokio::spawn(async move { nwc.handle_notifications().await });
+    Ok(())
+}
+
+/// start app and tasks
 pub async fn start(state: AppState) -> Result<()> {
-    let data = web::Data::new(state);
-    let c_data = data.clone();
+    let state = web::Data::new(state);
+
+    start_service_sync(state.clone().into_inner());
+    start_nwc(state.clone().into_inner()).await?;
+
+    let c_data = state.clone();
     let server = HttpServer::new(move || create_web_app(c_data.clone()));
-    let num = if data.setting.thread.http == 0 {
+    let num = if state.setting.thread.http == 0 {
         num_cpus::get()
     } else {
-        data.setting.thread.http
+        state.setting.thread.http
     };
-    let host = data.setting.network.host.clone();
-    let port = data.setting.network.port;
+    let host = state.setting.network.host.clone();
+    let port = state.setting.network.port;
     info!("Start http server {}:{}", host, port);
     server.workers(num).bind((host, port))?.run().await?;
     Ok(())

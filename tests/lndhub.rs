@@ -7,18 +7,12 @@ use actix_web::{
     web,
 };
 use anyhow::Result;
-use migration::{Migrator, MigratorTrait};
 use satsbox::{create_web_app, AppState};
 use serde_json::json;
 use std::time::Duration;
-mod util;
+use util::create_test_state;
 
-async fn create_test_state() -> Result<AppState> {
-    dotenvy::from_filename(".test.env")?;
-    let state = AppState::create(None::<String>, Some("SATSBOX".to_owned())).await?;
-    Migrator::fresh(state.service.db()).await?;
-    Ok(state)
-}
+mod util;
 
 #[actix_rt::test]
 async fn auth() -> Result<()> {

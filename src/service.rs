@@ -6,8 +6,9 @@ use sea_orm::{
     sea_query::Expr, ActiveModelTrait, ColumnTrait, DbConn, EntityTrait, NotSet, QueryFilter,
     QueryOrder, Set, TransactionTrait,
 };
+use tokio::time::sleep;
 
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Duration};
 
 pub fn rand_preimage() -> Vec<u8> {
     let mut store_key_bytes = [0u8; 32];
@@ -122,23 +123,25 @@ impl Service {
     pub async fn get_or_create_user(&self, pubkey: Vec<u8>) -> Result<user::Model> {
         match self.get_user(pubkey.clone()).await? {
             Some(u) => Ok(u),
-            None => {
-                let now = now() as i64;
-                // create
-                Ok(user::ActiveModel {
-                    pubkey: Set(pubkey.clone()),
-                    id: NotSet,
-                    balance: NotSet,
-                    lock_amount: NotSet,
-                    username: NotSet,
-                    password: NotSet,
-                    created_at: Set(now),
-                    updated_at: Set(now),
-                }
-                .insert(self.db())
-                .await?)
-            }
+            None => self.create_user(pubkey.clone()).await,
         }
+    }
+
+    pub async fn create_user(&self, pubkey: Vec<u8>) -> Result<user::Model> {
+        let now = now() as i64;
+        // create
+        Ok(user::ActiveModel {
+            pubkey: Set(pubkey),
+            id: NotSet,
+            balance: NotSet,
+            lock_amount: NotSet,
+            username: NotSet,
+            password: NotSet,
+            created_at: Set(now),
+            updated_at: Set(now),
+        }
+        .insert(self.db())
+        .await?)
     }
 
     pub async fn get_invoice(&self, id: i32) -> Result<Option<invoice::Model>> {
@@ -292,6 +295,19 @@ impl Service {
         }
     }
 
+    pub async fn sync(&self, duration: Duration, invoice_expiry: Duration) -> Result<()> {
+        let seconds = invoice_expiry.as_secs();
+        tracing::info!("start task for sync invoices and payments");
+        loop {
+            let from_time = now() - seconds;
+            let r = self.sync_invoices(from_time).await;
+            tracing::trace!("sync invoices {:?}", r);
+            let r = self.sync_payments(None).await;
+            tracing::trace!("sync payments {:?}", r);
+            sleep(duration).await;
+        }
+    }
+
     pub async fn sync_invoices(&self, from_time: u64) -> Result<usize> {
         // get invoices unpaid for update status
         // get paid for check duplicate pay by external and internal
@@ -327,7 +343,7 @@ impl Service {
                             lightning::InvoiceStatus::Canceled => {
                                 updated += 1;
                                 // expired
-                                let res = invoice::Entity::update_many()
+                                let _res = invoice::Entity::update_many()
                                     .set(invoice::ActiveModel {
                                         status: Set(invoice::Status::Canceled),
                                         ..Default::default()
@@ -335,10 +351,10 @@ impl Service {
                                     .filter(invoice::Column::Id.eq(invoice.id))
                                     .filter(invoice::Column::Status.eq(invoice::Status::Unpaid))
                                     .exec(self.db())
-                                    .await?;
-                                if res.rows_affected != 1 {
-                                    // log err
-                                }
+                                    .await;
+                                // if res.rows_affected != 1 {
+                                //     // log err
+                                // }
                             }
                         }
                     }

@@ -1,11 +1,14 @@
 use crate::Error;
 use crate::{hash::NoOpHasherDefault, Result};
 use config::{Config, Environment, File, FileFormat};
+use nostr_sdk::secp256k1::SecretKey;
 use notify::{event::ModifyKind, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use parking_lot::RwLock;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::num::NonZeroU32;
+use std::str::FromStr;
 use std::{
     any::{Any, TypeId},
     collections::HashMap,
@@ -150,9 +153,37 @@ pub struct Auth {
 impl Default for Auth {
     fn default() -> Self {
         Self {
-            secret: Default::default(),
+            secret: "test".to_owned(),
             refresh_token_expiry: 7 * 24 * 60 * 60,
             access_token_expiry: 2 * 24 * 60 * 60,
+        }
+    }
+}
+
+/// nwc config
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(default)]
+pub struct Nwc {
+    /// relay server
+    pub relays: Vec<String>,
+    // #[serde(with = "hex::serde")]
+    pub privkey: SecretKey,
+
+    pub proxy: Option<String>,
+
+    pub rate_limit_per_second: NonZeroU32,
+}
+
+impl Default for Nwc {
+    fn default() -> Self {
+        Self {
+            relays: vec!["wss://relay.damus.io".to_owned()],
+            privkey: SecretKey::from_str(
+                "c267c52ca60b4d6553891ad201eebda3af21addcedb62bf624c942413a0ced46",
+            )
+            .unwrap(),
+            proxy: None,
+            rate_limit_per_second: NonZeroU32::new(10).unwrap(),
         }
     }
 }
@@ -176,6 +207,7 @@ pub struct Setting {
     pub lnd: Option<Lnd>,
 
     pub auth: Auth,
+    pub nwc: Nwc,
 
     /// flatten extensions setting to json::Value
     #[serde(flatten)]
@@ -200,6 +232,7 @@ impl Default for Setting {
             extra: Default::default(),
             extensions: Default::default(),
             auth: Default::default(),
+            nwc: Default::default(),
         }
     }
 }
@@ -350,29 +383,32 @@ impl Setting {
             // override with file contents
             .add_source(File::with_name(file.as_ref().to_str().unwrap()));
         if let Some(prefix) = env_prefix {
-            config = config.add_source(
-                Environment::with_prefix(&prefix)
-                    .prefix_separator("_")
-                    .separator("__"),
-            );
+            config = config.add_source(Self::env_source(&prefix));
         }
 
         let config = config.build()?;
-        let setting: Setting = config.try_deserialize()?;
+        let mut setting: Setting = config.try_deserialize()?;
+        setting.validate()?;
         Ok(setting)
+    }
+
+    fn env_source(prefix: &str) -> Environment {
+        Environment::with_prefix(prefix)
+            .try_parsing(true)
+            .prefix_separator("_")
+            .separator("__")
+            .list_separator(" ")
+            .with_list_parse_key("nwc.relays")
     }
 
     /// read config from env
     pub fn from_env(env_prefix: String) -> Result<Self> {
         let mut config = Config::builder();
-        config = config.add_source(
-            Environment::with_prefix(&env_prefix)
-                .prefix_separator("_")
-                .separator("__"),
-        );
+        config = config.add_source(Self::env_source(&env_prefix));
 
         let config = config.build()?;
-        let setting: Setting = config.try_deserialize()?;
+        let mut setting: Setting = config.try_deserialize()?;
+        setting.validate()?;
         Ok(setting)
     }
 
@@ -380,8 +416,13 @@ impl Setting {
     pub fn from_str(s: &str, format: FileFormat) -> Result<Self> {
         let builder = Config::builder();
         let config = builder.add_source(File::from_str(s, format)).build()?;
-        let setting: Setting = config.try_deserialize()?;
+        let mut setting: Setting = config.try_deserialize()?;
+        setting.validate()?;
         Ok(setting)
+    }
+
+    fn validate(&mut self) -> Result<()> {
+        Ok(())
     }
 }
 

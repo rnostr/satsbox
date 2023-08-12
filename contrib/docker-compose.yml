@@ -163,3 +163,20 @@ services:
       - 8306:3306
     volumes:
       - ./data/mariadb:/var/lib/mysql
+
+  rnostr:
+    image: rnostr/rnostr:latest
+    restart: unless-stopped
+    environment:
+      RNOSTR_NETWORK__HOST: 0.0.0.0
+    ports:
+      - 8880:8080
+
+  strfry:
+    image: dockurr/strfry:latest
+    restart: unless-stopped
+    command: /bin/sh -c 'mkdir -p /app/strfry-db && sed -i "s/\/app\/write-policy.py//g" /etc/strfry.conf.default && /app/strfry.sh'
+    ports:
+      - 8777:7777
+
+

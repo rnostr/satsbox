@@ -8,6 +8,7 @@ mod app;
 mod auth;
 mod hash;
 pub mod lndhub;
+pub mod nwc;
 mod service;
 pub mod setting;
 
@@ -29,6 +30,18 @@ pub enum Error {
     Json(#[from] serde_json::Error),
     #[error(transparent)]
     Hex(#[from] hex::FromHexError),
+    #[error(transparent)]
+    Secp256k1(#[from] nostr_sdk::prelude::secp256k1::Error),
+    #[error(transparent)]
+    NostrClient(#[from] nostr_sdk::client::Error),
+    #[error(transparent)]
+    NostrNip04(#[from] nostr_sdk::nips::nip04::Error),
+    #[error(transparent)]
+    NostrEventBuilder(#[from] nostr_sdk::event::builder::Error),
+    #[error(transparent)]
+    AddrParseError(#[from] std::net::AddrParseError),
+    #[error(transparent)]
+    Auth(#[from] auth::AuthError),
     #[error("{0}")]
     Message(String),
     #[error("{0}")]
@@ -37,8 +50,10 @@ pub enum Error {
     InvalidPayment(String),
     #[error("Payment is being processed, please check the result later")]
     PaymentInProgress,
-    #[error(transparent)]
-    Auth(#[from] auth::AuthError),
+    #[error("The wallet does not have enough funds")]
+    InsufficientBalance,
+    #[error("Rate limiter exceeded")]
+    RateLimited,
 }
 
 impl ResponseError for Error {
