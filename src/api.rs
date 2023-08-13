@@ -1,12 +1,15 @@
 //! http api
 
 use crate::{auth, AppState, Error, Result};
-use actix_web::{get, post, web, HttpResponse, Responder};
+use actix_web::{get, post, web, HttpResponse, Responder, Scope};
 
 use serde_json::{json, Value};
 
-pub fn configure(cfg: &mut web::ServiceConfig) {
-    cfg.service(info).service(post_auth).service(get_auth);
+pub fn scope() -> Scope {
+    web::scope("/v1")
+        .service(info)
+        .service(post_auth)
+        .service(get_auth)
 }
 
 #[get("/info")]

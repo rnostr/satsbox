@@ -8,6 +8,8 @@ mod app;
 mod auth;
 mod hash;
 pub mod lndhub;
+pub mod lnurl;
+pub mod nip05;
 pub mod nwc;
 mod service;
 pub mod setting;

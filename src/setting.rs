@@ -188,12 +188,32 @@ impl Default for Nwc {
     }
 }
 
+/// nwc config
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(default)]
+pub struct Lnurl {
+    pub min_sendable: u64,
+    pub max_sendable: u64,
+}
+
+impl Default for Lnurl {
+    fn default() -> Self {
+        Self {
+            min_sendable: 1_000,
+            max_sendable: 10_000_000_000,
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Setting {
     /// database url
     /// https://www.sea-ql.org/SeaORM/docs/install-and-config/connection/
     pub db_url: String,
+
+    /// the site url
+    pub site: Option<String>,
 
     pub fee: Fee,
 
@@ -208,6 +228,7 @@ pub struct Setting {
 
     pub auth: Auth,
     pub nwc: Nwc,
+    pub lnurl: Lnurl,
 
     /// flatten extensions setting to json::Value
     #[serde(flatten)]
@@ -218,12 +239,21 @@ pub struct Setting {
     extensions: HashMap<TypeId, Box<dyn Any + Send + Sync>, NoOpHasherDefault>,
 }
 
+// impl Setting {
+//     pub fn site(&self) -> String {
+//         self.site
+//             .clone()
+//             .unwrap_or_else(|| format!("http://{}:{}", self.network.host, self.network.port))
+//     }
+// }
+
 impl Default for Setting {
     fn default() -> Self {
         Self {
             db_url: "sqlite://satsbox.sqlite".to_string(),
             cln: None,
             lnd: None,
+            site: None,
             lightning_node: "127.0.0.1:9735".to_string(),
             lightning: Default::default(),
             thread: Default::default(),
@@ -233,6 +263,7 @@ impl Default for Setting {
             extensions: Default::default(),
             auth: Default::default(),
             nwc: Default::default(),
+            lnurl: Default::default(),
         }
     }
 }

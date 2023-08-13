@@ -1,4 +1,5 @@
-use crate::{api, lndhub, nwc::Nwc, setting::Setting, Error, Result, Service};
+use crate::{api, lndhub, lnurl, nip05, nwc::Nwc, setting::Setting, Error, Result, Service};
+use actix_cors::Cors;
 use actix_web::{
     body::MessageBody,
     dev::{ServiceFactory, ServiceRequest},
@@ -90,7 +91,20 @@ pub fn create_web_app(
         .app_data(data)
         .wrap(middleware::Logger::default()) // enable logger
         .configure(lndhub::configure)
-        .service(web::scope("/v1").configure(api::configure))
+        .service(api::scope())
+        .service(
+            web::scope("/.well-known")
+                .wrap(
+                    Cors::default()
+                        .send_wildcard()
+                        .allow_any_header()
+                        .allow_any_origin()
+                        .allow_any_method()
+                        .max_age(86_400),
+                )
+                .service(lnurl::scope())
+                .service(nip05::info),
+        )
 }
 
 /// start the service sync task for sync invoices and payments from lightning node.

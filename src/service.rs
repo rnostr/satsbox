@@ -56,6 +56,13 @@ impl Service {
         get_user_by_id(self.db(), id).await
     }
 
+    pub async fn get_user_by_name(&self, name: String) -> Result<Option<user::Model>> {
+        Ok(user::Entity::find()
+            .filter(user::Column::Username.eq(name))
+            .one(self.db())
+            .await?)
+    }
+
     pub async fn get_user(&self, pubkey: Vec<u8>) -> Result<Option<user::Model>> {
         Ok(user::Entity::find()
             .filter(user::Column::Pubkey.eq(pubkey))
