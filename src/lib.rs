@@ -44,6 +44,8 @@ pub enum Error {
     #[error(transparent)]
     NostrEventBuilder(#[from] nostr_sdk::event::builder::Error),
     #[error(transparent)]
+    NostrEvent(#[from] nostr_sdk::event::Error),
+    #[error(transparent)]
     AddrParseError(#[from] std::net::AddrParseError),
     #[error(transparent)]
     Auth(#[from] auth::AuthError),

@@ -20,6 +20,8 @@ pub fn rand_preimage() -> Vec<u8> {
 pub struct InvoiceExtra {
     pub source: String,
     pub comment: Option<String>,
+    pub zap: bool,
+    pub zap_receipt: Option<String>,
 }
 
 impl InvoiceExtra {
@@ -885,5 +887,7 @@ fn create_invoice_active_model(
         created_at: Set(now as i64),
         updated_at: Set(now as i64),
         comment: extra.comment.map(Set).unwrap_or(NotSet),
+        zap: Set(extra.zap),
+        zap_receipt: Set(extra.zap_receipt),
     }
 }

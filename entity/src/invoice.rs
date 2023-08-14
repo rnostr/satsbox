@@ -78,7 +78,13 @@ pub struct Model {
     pub service_fee: i64,
 
     /// LUD-12 comment
+    #[sea_orm(column_type = "Text")]
     pub comment: String,
+    /// NIP-57 zap
+    pub zap: bool,
+    /// NIP-57 zap receipt event
+    #[sea_orm(column_type = "Text")]
+    pub zap_receipt: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

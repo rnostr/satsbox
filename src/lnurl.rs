@@ -4,7 +4,7 @@ use crate::{AppState, Error, InvoiceExtra, Result};
 use actix_web::{
     get, http::StatusCode, web, HttpRequest, HttpResponse, Responder, ResponseError, Scope,
 };
-use nostr_sdk::{prelude::FromBech32, secp256k1::XOnlyPublicKey, Keys};
+use nostr_sdk::{prelude::FromBech32, secp256k1::XOnlyPublicKey, Event, Keys, Kind, Tag};
 use serde::Deserialize;
 use serde_aux::prelude::deserialize_number_from_string;
 use serde_json::json;
@@ -119,16 +119,84 @@ pub async fn create_invoice(
             setting.comment_allowed
         )));
     }
+    let event_str = query.nostr.clone().unwrap_or_default();
+    let (memo, extra) = if event_str.is_empty() {
+        let event = Event::from_json(&event_str).map_err(Error::from)?;
+        // https://github.com/nostr-protocol/nips/blob/master/57.md#appendix-d-lnurl-server-zap-request-validation
+        if event.kind != Kind::ZapRequest {
+            return Err(LnurlError::Invalid(format!(
+                "Nostr event kind must be {}.",
+                Kind::ZapRequest.as_u32()
+            )));
+        }
 
-    // lud06, lud18 description hash
-    let memo = format!(
-        "{}{}",
-        metadata(
-            req.uri().authority().map(|a| a.as_str()).unwrap_or(""),
-            &username,
-        )?,
-        query.payerdata.clone().unwrap_or_default(),
-    );
+        let mut relays = vec![];
+        let mut e_count = 0;
+        let mut p_count = 0;
+        let mut amount = None;
+        for tag in &event.tags {
+            match tag {
+                Tag::Relays(r) => {
+                    relays = r.clone();
+                }
+                Tag::PubKey(_, _) => {
+                    p_count += 1;
+                }
+                Tag::Event(_, _, _) => {
+                    e_count += 1;
+                }
+                Tag::Amount(num) => amount = Some(*num),
+                _ => {}
+            }
+        }
+
+        if p_count != 1 {
+            return Err(LnurlError::Invalid(
+                "Nostr event must have exactly one pubkey tag".to_owned(),
+            ));
+        }
+
+        if e_count > 1 {
+            return Err(LnurlError::Invalid(
+                "Nostr event must have have 0 or 1 event tags".to_owned(),
+            ));
+        }
+        if relays.is_empty() {
+            return Err(LnurlError::Invalid(
+                "Nostr event must have at least one relay".to_owned(),
+            ));
+        }
+        if let Some(num) = amount {
+            if num != query.amount {
+                return Err(LnurlError::Invalid(
+                    "Nostr event must have the same amount".to_owned(),
+                ));
+            }
+        }
+        let extra = InvoiceExtra {
+            source: "zap".to_owned(),
+            comment: Some(comment),
+            zap: true,
+            zap_receipt: None,
+        };
+        (event_str, extra)
+    } else {
+        let extra = InvoiceExtra {
+            source: "lnurlp".to_owned(),
+            comment: Some(comment),
+            ..Default::default()
+        };
+        // lud06, lud18 description hash
+        let memo = format!(
+            "{}{}",
+            metadata(
+                req.uri().authority().map(|a| a.as_str()).unwrap_or(""),
+                &username,
+            )?,
+            query.payerdata.clone().unwrap_or_default(),
+        );
+        (memo, extra)
+    };
 
     let user = if let Ok(pubkey) = XOnlyPublicKey::from_bech32(&username) {
         // pubkey
@@ -145,11 +213,6 @@ pub async fn create_invoice(
     };
 
     let expiry = 3600 * 24; // one day
-
-    let extra = InvoiceExtra {
-        source: "lnurl".to_owned(),
-        comment: Some(comment),
-    };
 
     let invoice = state
         .service

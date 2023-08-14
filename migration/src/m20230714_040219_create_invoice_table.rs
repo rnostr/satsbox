@@ -150,6 +150,13 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default("".to_owned()),
                     )
+                    .col(
+                        ColumnDef::new(invoice::Column::Zap)
+                            .boolean()
+                            .not_null()
+                            .default(false),
+                    )
+                    .col(ColumnDef::new(invoice::Column::ZapReceipt).text().null())
                     .to_owned(),
             )
             .await?;
