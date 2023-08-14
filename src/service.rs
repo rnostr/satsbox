@@ -16,6 +16,21 @@ pub fn rand_preimage() -> Vec<u8> {
     store_key_bytes.to_vec()
 }
 
+#[derive(Default)]
+pub struct InvoiceExtra {
+    pub source: String,
+    pub comment: Option<String>,
+}
+
+impl InvoiceExtra {
+    pub fn new<S: Into<String>>(source: S) -> Self {
+        Self {
+            source: source.into(),
+            ..Default::default()
+        }
+    }
+}
+
 type Lt = Box<dyn Lightning + Sync + Send>;
 /// Lightning service
 #[derive(Clone)]
@@ -161,7 +176,7 @@ impl Service {
         memo: String,
         msats: u64,
         expiry: u64,
-        source: String,
+        extra: InvoiceExtra,
     ) -> Result<invoice::Model> {
         let preimage = rand_preimage();
         let hash = sha256(&preimage);
@@ -174,7 +189,7 @@ impl Service {
             return Err(Error::Str("invalid payment hash"));
         }
 
-        let model = create_invoice_active_model(user, preimage, invoice, self.name.clone(), source);
+        let model = create_invoice_active_model(user, preimage, invoice, self.name.clone(), extra);
 
         Ok(model.insert(self.db()).await?)
     }
@@ -215,8 +230,13 @@ impl Service {
                 return Err(Error::Str("The balance is insufficient."));
             }
 
-            let mut invoice =
-                create_invoice_active_model(user, vec![], inv, self.name.clone(), source);
+            let mut invoice = create_invoice_active_model(
+                user,
+                vec![],
+                inv,
+                self.name.clone(),
+                InvoiceExtra::new(source),
+            );
             // payment
             invoice.r#type = Set(invoice::Type::Payment);
             invoice.total = Set(total);
@@ -587,7 +607,7 @@ async fn internal_pay(
         payee_inv.payment_preimage.clone(),
         inv,
         service,
-        "".to_owned(),
+        InvoiceExtra::new(""),
     );
     // payment
     payment_model.r#type = Set(invoice::Type::Payment);
@@ -834,7 +854,7 @@ fn create_invoice_active_model(
     preimage: Vec<u8>,
     invoice: lightning::Invoice,
     service: String,
-    source: String,
+    extra: InvoiceExtra,
 ) -> invoice::ActiveModel {
     let now = now();
     invoice::ActiveModel {
@@ -860,9 +880,10 @@ fn create_invoice_active_model(
         internal: Set(false),
         duplicate: Set(false),
         service_fee: Set(0),
-        source: Set(source),
+        source: Set(extra.source),
         service: Set(service),
         created_at: Set(now as i64),
         updated_at: Set(now as i64),
+        comment: extra.comment.map(Set).unwrap_or(NotSet),
     }
 }

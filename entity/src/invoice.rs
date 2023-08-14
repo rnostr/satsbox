@@ -76,6 +76,9 @@ pub struct Model {
     /// duplicate payment by external and internal
     pub duplicate: bool,
     pub service_fee: i64,
+
+    /// LUD-12 comment
+    pub comment: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

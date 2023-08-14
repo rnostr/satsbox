@@ -14,7 +14,10 @@ mod service;
 pub mod setting;
 pub use lightning_client::sha256;
 
-pub use {app::*, service::Service};
+pub use {
+    app::*,
+    service::{InvoiceExtra, Service},
+};
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {

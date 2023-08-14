@@ -6,7 +6,7 @@ use migration::{Migrator, MigratorTrait};
 use satsbox::{
     now,
     setting::{Fee, Lightning, Setting},
-    AppState,
+    AppState, InvoiceExtra,
 };
 use std::time::Duration;
 use tokio::time::sleep;
@@ -50,7 +50,13 @@ async fn create_invoice() -> Result<()> {
     let service = &state.service;
     let user = service.get_or_create_user(pubkey.clone()).await?;
     let invoice = service
-        .create_invoice(&user, memo.clone(), msats, expiry, source.clone())
+        .create_invoice(
+            &user,
+            memo.clone(),
+            msats,
+            expiry,
+            InvoiceExtra::new(&source),
+        )
         .await?;
 
     assert_eq!(invoice.source, source);
@@ -83,7 +89,7 @@ async fn internal_payment() -> Result<()> {
             memo.clone(),
             msats as u64,
             expiry,
-            source.clone(),
+            InvoiceExtra::new(&source),
         )
         .await?;
     assert_eq!(payee_invoice.status, invoice::Status::Unpaid);
@@ -199,7 +205,13 @@ async fn self_payment() -> Result<()> {
     let service = &state.service;
     let user = service.get_or_create_user(pubkey.clone()).await?;
     let invoice = service
-        .create_invoice(&user, memo.clone(), msats as u64, expiry, source.clone())
+        .create_invoice(
+            &user,
+            memo.clone(),
+            msats as u64,
+            expiry,
+            InvoiceExtra::new(&source),
+        )
         .await?;
     assert_eq!(invoice.status, invoice::Status::Unpaid);
 
@@ -315,7 +327,7 @@ async fn pay(payer: Lightning, payee: Lightning, test_sync: bool) -> Result<()> 
             memo.clone(),
             msats as u64,
             expiry,
-            source.clone(),
+            InvoiceExtra::new(&source),
         )
         .await?;
     assert_eq!(payee_invoice.status, invoice::Status::Unpaid);
@@ -443,7 +455,7 @@ async fn duplicate_payment() -> Result<()> {
             memo.clone(),
             msats as u64,
             expiry,
-            source.clone(),
+            InvoiceExtra::new(&source),
         )
         .await?;
     assert_eq!(payee_invoice.status, invoice::Status::Unpaid);

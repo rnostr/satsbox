@@ -194,6 +194,7 @@ impl Default for Nwc {
 pub struct Lnurl {
     pub min_sendable: u64,
     pub max_sendable: u64,
+    pub comment_allowed: usize,
 }
 
 impl Default for Lnurl {
@@ -201,6 +202,7 @@ impl Default for Lnurl {
         Self {
             min_sendable: 1_000,
             max_sendable: 10_000_000_000,
+            comment_allowed: 255,
         }
     }
 }

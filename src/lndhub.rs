@@ -2,7 +2,7 @@
 
 use crate::{
     auth::{AuthError, AuthedUser, JwtToken},
-    AppState, Error, Result,
+    AppState, Error, InvoiceExtra, Result,
 };
 use actix_web::{
     dev::Payload, get, http::StatusCode, post, web, FromRequest, HttpRequest, HttpResponse,
@@ -265,7 +265,7 @@ pub async fn add_invoice(
             data.memo.clone(),
             data.amt * 1000,
             expiry,
-            source,
+            InvoiceExtra::new(source),
         )
         .await?;
     Ok(web::Json(InvoiceRes::from(invoice)))

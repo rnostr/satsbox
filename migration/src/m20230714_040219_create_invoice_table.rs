@@ -92,7 +92,8 @@ impl MigrationTrait for Migration {
                     .col(
                         ColumnDef::new(invoice::Column::Description)
                             .text()
-                            .not_null(),
+                            .not_null()
+                            .default("".to_owned()),
                     )
                     .col(ColumnDef::new(invoice::Column::Bolt11).text().not_null())
                     .col(
@@ -142,6 +143,12 @@ impl MigrationTrait for Migration {
                         ColumnDef::new(invoice::Column::ServiceFee)
                             .big_integer()
                             .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(invoice::Column::Comment)
+                            .text()
+                            .not_null()
+                            .default("".to_owned()),
                     )
                     .to_owned(),
             )
