@@ -1,3 +1,5 @@
+use bitcoin_hashes::{sha256, Hash};
+
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     #[error(transparent)]
@@ -43,3 +45,7 @@ pub use lnd::Lnd;
 
 pub mod lightning;
 pub use lightning::Lightning;
+
+pub fn sha256(s: impl AsRef<[u8]>) -> Vec<u8> {
+    sha256::Hash::hash(s.as_ref()).to_byte_array().to_vec()
+}

@@ -849,7 +849,7 @@ fn create_invoice_active_model(
         generated_at: Set(invoice.created_at as i64),
         expiry: Set(invoice.expiry as i64),
         expired_at: Set((invoice.created_at + invoice.expiry) as i64),
-        description: Set(invoice.description),
+        description: Set(invoice.description.unwrap_or_default()),
         bolt11: Set(invoice.bolt11),
         amount: Set(invoice.amount as i64),
         paid_at: Set(0),

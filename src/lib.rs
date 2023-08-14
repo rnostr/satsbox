@@ -1,6 +1,5 @@
 use actix_web::{http::StatusCode, HttpResponse, ResponseError};
 use serde_json::json;
-use sha2::{Digest, Sha256};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub mod api;
@@ -13,6 +12,7 @@ pub mod nip05;
 pub mod nwc;
 mod service;
 pub mod setting;
+pub use lightning_client::sha256;
 
 pub use {app::*, service::Service};
 
@@ -83,10 +83,4 @@ pub fn now() -> u64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs()
-}
-
-pub fn sha256(s: impl AsRef<[u8]>) -> Vec<u8> {
-    let mut hasher = Sha256::new();
-    hasher.update(s);
-    hasher.finalize().to_vec()
 }

@@ -1,6 +1,6 @@
 //! lnd v0.16.4-beta grpc api
 
-use crate::{lightning::*, Error, Result};
+use crate::{lightning::*, sha256, Error, Result};
 use hyper::{
     client::{HttpConnector, ResponseFuture},
     Body, Client, Request, Response, Uri,
@@ -262,11 +262,13 @@ impl Lightning for Lnd {
         preimage: Option<Vec<u8>>,
         expiry: Option<u64>,
     ) -> Result<Invoice> {
+        let hash = sha256(&memo);
         let data = self
             .lightning
             .clone()
             .add_invoice(lnrpc::Invoice {
-                memo,
+                // memo: memo.clone(),
+                description_hash: hash,
                 r_preimage: preimage.unwrap_or_default(),
                 value_msat: msats as i64,
                 expiry: expiry.unwrap_or_default() as i64,
@@ -277,6 +279,7 @@ impl Lightning for Lnd {
 
         let mut invoice = Invoice::from_bolt11(data.payment_request)?;
         invoice.id = data.add_index.to_string();
+        invoice.description = Some(memo);
         invoice.status = InvoiceStatus::Open;
         Ok(invoice)
 
@@ -333,6 +336,7 @@ impl Lightning for Lnd {
             .list_invoices(lnrpc::ListInvoiceRequest {
                 creation_date_start: from.unwrap_or_default(),
                 creation_date_end: to.unwrap_or_default(),
+                num_max_invoices: 1_000_000, // default 100
                 ..Default::default()
             })
             .await?

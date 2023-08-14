@@ -131,9 +131,10 @@ impl Lightning for Cln {
             .invoice(InvoiceRequest {
                 amount_msat: amount_or_any(msats),
                 preimage,
-                description: memo,
+                description: memo.clone(),
                 expiry,
                 label: id.clone(),
+                deschashonly: Some(true),
                 ..Default::default()
             })
             .await?
@@ -141,6 +142,8 @@ impl Lightning for Cln {
 
         let mut invoice = Invoice::from_bolt11(data.bolt11)?;
         invoice.id = id;
+        // set the description
+        invoice.description = Some(memo);
         invoice.status = InvoiceStatus::Open;
         Ok(invoice)
 

@@ -42,7 +42,8 @@ pub struct Invoice {
     pub payment_hash: Vec<u8>,
     #[serde(with = "hex::serde")]
     pub payment_secret: Vec<u8>,
-    pub description: String,
+    pub description: Option<String>,
+    pub description_hash: Option<Vec<u8>>,
     pub expiry: u64,
     /// amount in msats
     pub amount: u64,
@@ -95,10 +96,8 @@ impl Invoice {
                 .min_final_cltv_expiry_delta()
                 .map(|d| d.0)
                 .unwrap_or(lightning_invoice::DEFAULT_MIN_FINAL_CLTV_EXPIRY_DELTA), //Default is 18 if not specified.
-            description: inv
-                .description()
-                .map(|d| d.clone().into_inner())
-                .unwrap_or_default(),
+            description: inv.description().map(|d| d.clone().into_inner()),
+            description_hash: inv.description_hash().map(|h| h.0.to_vec()),
             ..Default::default()
         })
     }
@@ -200,7 +199,7 @@ mod tests {
             hex::decode("02b6620f6c560f372d9ea229eb9bc65a60168a490e9805d4ee23ca2e5b3ff7d25b")?
         );
         assert_eq!(inv.amount, 10000);
-        assert_eq!(inv.description, "");
+        assert_eq!(inv.description, Some("".to_owned()));
         assert_eq!(inv.cltv_expiry, 80);
         assert_eq!(
             inv.payment_hash,

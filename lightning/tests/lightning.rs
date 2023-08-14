@@ -1,8 +1,7 @@
 #![allow(unused)]
-use bitcoin_hashes::{sha256, Hash};
 use lightning_client::{
     lightning::{InvoiceStatus, PaymentStatus},
-    Error, Lightning, Result,
+    sha256, Error, Lightning, Result,
 };
 use rand::RngCore;
 
@@ -43,11 +42,13 @@ pub async fn create_invoice<L: Lightning>(client: &L) -> Result<()> {
     let expiry = 60 * 10; // 10 minutes
     let msats = 100_000;
     let memo = "test".to_owned();
-    let hash = sha256::Hash::hash(&image).to_byte_array().to_vec();
+    let description_hash = sha256(&memo);
+    let hash = sha256(&image);
     let invoice = client
         .create_invoice(memo.clone(), msats, Some(image.clone()), Some(expiry))
         .await?;
-    assert_eq!(invoice.description, memo);
+    assert_eq!(invoice.description, Some(memo.clone()));
+    assert_eq!(invoice.description_hash, Some(description_hash));
     assert_eq!(invoice.amount, msats);
     assert_eq!(invoice.expiry, expiry);
     assert_eq!(invoice.payment_hash, hash);
