@@ -173,10 +173,18 @@ services:
       - 8880:8080
 
   strfry:
-    image: dockurr/strfry:latest
+    image: ksinica/strfry:latest
     restart: unless-stopped
-    command: /bin/sh -c 'mkdir -p /app/strfry-db && sed -i "s/\/app\/write-policy.py//g" /etc/strfry.conf.default && /app/strfry.sh'
+    entrypoint: /usr/local/bin/strfry
+    command: relay
     ports:
       - 8777:7777
+
+  #strfry:
+  #  image: dockurr/strfry:latest
+  #  restart: unless-stopped
+  #  command: /bin/sh -c 'mkdir -p /app/strfry-db && sed -i "s/\/app\/write-policy.py//g" /etc/strfry.conf.default && /app/strfry.sh'
+  #  ports:
+  #    - 8777:7777
 
 
