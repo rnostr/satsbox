@@ -125,16 +125,15 @@ services:
   rnostr:
     image: rnostr/rnostr:latest
     restart: unless-stopped
-    environment:
-      RNOSTR_NETWORK__HOST: 0.0.0.0
     ports:
       - 8880:8080
 
   strfry:
     image: ksinica/strfry:latest
     restart: unless-stopped
-    entrypoint: /usr/local/bin/strfry
-    command: relay
+    #entrypoint: /usr/local/bin/strfry
+    #command: relay
+    entrypoint: /bin/sh -c 'sed -i "s/127.0.0.1/0.0.0.0/g" /etc/strfry.conf && /usr/local/bin/strfry relay'
     ports:
       - 8777:7777
 

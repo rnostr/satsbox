@@ -1,5 +1,5 @@
 use super::AuthError;
-use crate::{now, sha256, AppState, Error, Result};
+use crate::{full_uri_from_req, now, sha256, AppState, Error, Result};
 use actix_web::http::header::AUTHORIZATION;
 use actix_web::{dev::Payload, http::Uri, web, FromRequest, HttpRequest};
 use base64::engine::{general_purpose, Engine};
@@ -133,7 +133,7 @@ impl FromRequest for NostrAuth {
                             let token = auth[5..auth.len()].trim();
                             let user = NostrAuth::from_token(token, bytes.to_vec())?;
                             user.verify_time(60)?;
-                            user.verify_http(req.uri(), req.method().as_str())?;
+                            user.verify_http(&full_uri_from_req(&req), req.method().as_str())?;
                             return Ok(user);
                         }
                     } else {

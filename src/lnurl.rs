@@ -1,8 +1,9 @@
 //! lnurl api
 
-use crate::{AppState, Error, InvoiceExtra, Result};
+use crate::{full_uri_from_req, AppState, Error, InvoiceExtra, Result};
 use actix_web::{
-    get, http::StatusCode, web, HttpRequest, HttpResponse, Responder, ResponseError, Scope,
+    get, http::StatusCode, http::Uri, web, HttpRequest, HttpResponse, Responder, ResponseError,
+    Scope,
 };
 use nostr_sdk::{prelude::FromBech32, secp256k1::XOnlyPublicKey, Event, Keys, Kind, Tag};
 use serde::Deserialize;
@@ -46,6 +47,10 @@ fn metadata(host: &str, username: &String) -> Result<String> {
     Ok(serde_json::to_string(&metadata)?)
 }
 
+fn host_from_uri(uri: &Uri) -> &str {
+    uri.authority().map(|a| a.as_str()).unwrap_or("")
+}
+
 // lud06 lnurlp/{usename}
 // lud16 .well-known/lnurlp/{usename}
 // usename: bech32-serialized pubkey or a-z0-9-_. username
@@ -57,13 +62,14 @@ pub async fn info(
     state: web::Data<AppState>,
     username: web::Path<String>,
 ) -> Result<impl Responder, LnurlError> {
-    // req.uri()
     // let username = username.into_inner();
     let keys = Keys::new(state.setting.nwc.privkey);
-    let uri = req.uri();
-    let metadata = metadata(uri.authority().map(|a| a.as_str()).unwrap_or(""), &username)?;
+    let uri = full_uri_from_req(&req);
+
+    let metadata = metadata(host_from_uri(&uri), &username)?;
     Ok(web::Json(json!({
         "tag": "payRequest",
+        "status": "OK",
         "metadata": metadata,
         "commentAllowed": state.setting.lnurl.comment_allowed,
         "maxSendable": state.setting.lnurl.max_sendable,
@@ -102,6 +108,8 @@ pub async fn create_invoice(
     username: web::Path<String>,
     query: web::Query<InvoiceReq>,
 ) -> Result<impl Responder, LnurlError> {
+    let uri = full_uri_from_req(&req);
+
     let username = username.into_inner();
     let setting = &state.setting.lnurl;
     let amount = query.amount;
@@ -189,10 +197,7 @@ pub async fn create_invoice(
         // lud06, lud18 description hash
         let memo = format!(
             "{}{}",
-            metadata(
-                req.uri().authority().map(|a| a.as_str()).unwrap_or(""),
-                &username,
-            )?,
+            metadata(host_from_uri(&uri), &username,)?,
             query.payerdata.clone().unwrap_or_default(),
         );
         (memo, extra)

@@ -1,4 +1,6 @@
-use actix_web::{http::StatusCode, HttpResponse, ResponseError};
+use actix_web::{
+    http::uri::PathAndQuery, http::StatusCode, http::Uri, HttpRequest, HttpResponse, ResponseError,
+};
 use serde_json::json;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -88,4 +90,23 @@ pub fn now() -> u64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs()
+}
+
+pub fn full_uri_from_req(req: &HttpRequest) -> Uri {
+    let uri = req.uri();
+    if uri.authority().is_none() {
+        let info = req.connection_info();
+        Uri::builder()
+            .scheme(info.scheme())
+            .authority(info.host())
+            .path_and_query(
+                uri.path_and_query()
+                    .cloned()
+                    .unwrap_or_else(|| PathAndQuery::from_static("/")),
+            )
+            .build()
+            .unwrap()
+    } else {
+        uri.clone()
+    }
 }
