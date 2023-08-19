@@ -20,13 +20,11 @@ pub async fn info(
     query: web::Query<InfoReq>,
 ) -> Result<impl Responder, Error> {
     let name = query.name.clone();
-    let user = state
-        .service
-        .get_user_by_name(name.clone())
-        .await?
-        .ok_or(Error::Str("invalid user"))?;
+    let user = state.service.get_user_by_name(name.clone()).await?;
+    // .ok_or(Error::Str("invalid user"))?
     let mut map = HashMap::new();
-    map.insert(name, hex::encode(user.pubkey));
-
+    if let Some(user) = user {
+        map.insert(name, hex::encode(user.pubkey));
+    }
     Ok(web::Json(json!({"names": map})))
 }
