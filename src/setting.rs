@@ -8,7 +8,6 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::num::NonZeroU32;
-use std::str::FromStr;
 use std::{
     any::{Any, TypeId},
     collections::HashMap,
@@ -164,37 +163,45 @@ impl Default for Auth {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(default)]
 pub struct Nwc {
-    /// relay server
+    /// relay server, don't support nwc if relays is empty.
     pub relays: Vec<String>,
-    // #[serde(with = "hex::serde")]
-    pub privkey: SecretKey,
+    /// nwc private key, don't support nwc if not set.
+    pub privkey: Option<SecretKey>,
 
     pub proxy: Option<String>,
 
     pub rate_limit_per_second: NonZeroU32,
 }
 
+impl Nwc {
+    pub fn support(&self) -> bool {
+        !self.relays.is_empty() && self.privkey.is_some()
+    }
+}
+
 impl Default for Nwc {
     fn default() -> Self {
         Self {
-            relays: vec!["wss://relay.damus.io".to_owned()],
-            privkey: SecretKey::from_str(
-                "c267c52ca60b4d6553891ad201eebda3af21addcedb62bf624c942413a0ced46",
-            )
-            .unwrap(),
+            relays: vec![],
+            privkey: None,
             proxy: None,
             rate_limit_per_second: NonZeroU32::new(10).unwrap(),
         }
     }
 }
 
-/// nwc config
+/// lnurl config
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(default)]
 pub struct Lnurl {
     pub min_sendable: u64,
     pub max_sendable: u64,
     pub comment_allowed: usize,
+    /// nostr private key for send zap receipt, don't support nostr if not set.
+    pub privkey: Option<SecretKey>,
+
+    /// extra nostr relay server for sending zap receipt
+    pub relays: Vec<String>,
 }
 
 impl Default for Lnurl {
@@ -203,6 +210,8 @@ impl Default for Lnurl {
             min_sendable: 1_000,
             max_sendable: 10_000_000_000,
             comment_allowed: 255,
+            privkey: None,
+            relays: vec![],
         }
     }
 }
@@ -432,6 +441,7 @@ impl Setting {
             .separator("__")
             .list_separator(" ")
             .with_list_parse_key("nwc.relays")
+            .with_list_parse_key("lnurl.relays")
     }
 
     /// read config from env

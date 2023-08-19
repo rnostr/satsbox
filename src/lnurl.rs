@@ -63,7 +63,12 @@ pub async fn info(
     username: web::Path<String>,
 ) -> Result<impl Responder, LnurlError> {
     // let username = username.into_inner();
-    let keys = Keys::new(state.setting.nwc.privkey);
+    let (allow, pubkey) = if let Some(key) = state.setting.lnurl.privkey {
+        let keys = Keys::new(key);
+        (true, keys.public_key().to_string())
+    } else {
+        (false, Default::default())
+    };
     let uri = full_uri_from_req(&req);
 
     let metadata = metadata(host_from_uri(&uri), &username)?;
@@ -75,17 +80,17 @@ pub async fn info(
         "maxSendable": state.setting.lnurl.max_sendable,
         "minSendable": state.setting.lnurl.min_sendable,
         "callback": format!("{}/callback", uri),
-        "allowsNostr": true,
-        "nostrPubkey": keys.public_key().to_string(),
+        "allowsNostr": allow,
+        "nostrPubkey": pubkey,
         "payerData": {
             "name": {
-            "mandatory": false
+                "mandatory": false
             },
             "email": {
-            "mandatory": false
+                "mandatory": false
             },
             "pubkey": {
-            "mandatory": false
+                "mandatory": false
             }
         },
     })))
@@ -128,7 +133,7 @@ pub async fn create_invoice(
         )));
     }
     let event_str = query.nostr.clone().unwrap_or_default();
-    let (memo, extra) = if event_str.is_empty() {
+    let (memo, extra) = if state.setting.lnurl.privkey.is_some() && !event_str.is_empty() {
         let event = Event::from_json(&event_str).map_err(Error::from)?;
         // https://github.com/nostr-protocol/nips/blob/master/57.md#appendix-d-lnurl-server-zap-request-validation
         if event.kind != Kind::ZapRequest {

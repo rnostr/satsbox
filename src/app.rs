@@ -130,7 +130,12 @@ pub async fn start(state: AppState) -> Result<()> {
     let state = web::Data::new(state);
 
     start_service_sync(state.clone().into_inner());
-    start_nwc(state.clone().into_inner()).await?;
+    if state.setting.nwc.support() {
+        info!("Start nwc");
+        start_nwc(state.clone().into_inner()).await?;
+    } else {
+        info!("nwc disabled");
+    }
 
     let c_data = state.clone();
     let server = HttpServer::new(move || create_web_app(c_data.clone()));

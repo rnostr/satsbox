@@ -188,7 +188,7 @@ pub struct Nwc {
 impl Nwc {
     pub fn new(state: Arc<AppState>) -> Self {
         let lim = RateLimiter::direct(Quota::per_second(state.setting.nwc.rate_limit_per_second));
-        let keys = Keys::new(state.setting.nwc.privkey);
+        let keys = Keys::new(state.setting.nwc.privkey.unwrap());
         let opts = Options::new();
         let client = Client::with_opts(&keys, opts);
         Self {
