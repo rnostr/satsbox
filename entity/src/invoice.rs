@@ -79,9 +79,15 @@ pub struct Model {
 
     /// LUD-12 comment
     #[sea_orm(column_type = "Text")]
-    pub comment: String,
+    pub comment: Option<String>,
+
+    /// LUD-18 payerdata
+    #[sea_orm(column_type = "Text")]
+    pub payer_data: Option<String>,
+
     /// NIP-57 zap
     pub zap: bool,
+    pub zap_status: i32,
     /// NIP-57 zap receipt event
     #[sea_orm(column_type = "Text")]
     pub zap_receipt: Option<String>,

@@ -1,4 +1,11 @@
-use crate::{api, lndhub, lnurl, nip05, nwc::Nwc, setting::Setting, Error, Result, Service};
+use crate::{
+    api, lndhub,
+    lnurl::{self, loop_handle_receipts},
+    nip05,
+    nwc::Nwc,
+    setting::Setting,
+    Error, Result, Service,
+};
 use actix_cors::Cors;
 use actix_web::{
     body::MessageBody,
@@ -135,6 +142,13 @@ pub async fn start(state: AppState) -> Result<()> {
         start_nwc(state.clone().into_inner()).await?;
     } else {
         info!("nwc disabled");
+    }
+    if state.setting.lnurl.privkey.is_some() {
+        info!("Start task for handle zaps receipt");
+        let state = state.clone().into_inner();
+        tokio::spawn(async move { loop_handle_receipts(state, Duration::from_secs(2)).await });
+    } else {
+        info!("zaps disabled");
     }
 
     let c_data = state.clone();

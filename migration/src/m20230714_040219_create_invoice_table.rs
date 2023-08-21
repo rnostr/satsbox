@@ -144,17 +144,19 @@ impl MigrationTrait for Migration {
                             .big_integer()
                             .not_null(),
                     )
-                    .col(
-                        ColumnDef::new(invoice::Column::Comment)
-                            .text()
-                            .not_null()
-                            .default("".to_owned()),
-                    )
+                    .col(ColumnDef::new(invoice::Column::Comment).text().null())
+                    .col(ColumnDef::new(invoice::Column::PayerData).text().null())
                     .col(
                         ColumnDef::new(invoice::Column::Zap)
                             .boolean()
                             .not_null()
                             .default(false),
+                    )
+                    .col(
+                        ColumnDef::new(invoice::Column::ZapStatus)
+                            .integer()
+                            .not_null()
+                            .default(0),
                     )
                     .col(ColumnDef::new(invoice::Column::ZapReceipt).text().null())
                     .to_owned(),

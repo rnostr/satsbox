@@ -22,6 +22,7 @@ pub struct InvoiceExtra {
     pub comment: Option<String>,
     pub zap: bool,
     pub zap_receipt: Option<String>,
+    pub payer_data: Option<String>,
 }
 
 impl InvoiceExtra {
@@ -886,8 +887,10 @@ fn create_invoice_active_model(
         service: Set(service),
         created_at: Set(now as i64),
         updated_at: Set(now as i64),
-        comment: extra.comment.map(Set).unwrap_or(NotSet),
+        comment: Set(extra.comment),
+        payer_data: Set(extra.payer_data),
         zap: Set(extra.zap),
+        zap_status: NotSet,
         zap_receipt: Set(extra.zap_receipt),
     }
 }

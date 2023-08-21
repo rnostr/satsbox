@@ -202,6 +202,8 @@ pub struct Lnurl {
 
     /// extra nostr relay server for sending zap receipt
     pub relays: Vec<String>,
+    /// relay proxy
+    pub proxy: Option<String>,
 }
 
 impl Default for Lnurl {
@@ -212,6 +214,7 @@ impl Default for Lnurl {
             comment_allowed: 255,
             privkey: None,
             relays: vec![],
+            proxy: None,
         }
     }
 }

@@ -5,10 +5,20 @@ use actix_web::{
     get, http::StatusCode, http::Uri, web, HttpRequest, HttpResponse, Responder, ResponseError,
     Scope,
 };
-use nostr_sdk::{prelude::FromBech32, secp256k1::XOnlyPublicKey, Event, Keys, Kind, Tag};
+use entity::invoice;
+use nostr_sdk::{
+    prelude::FromBech32, secp256k1::XOnlyPublicKey, Client, Event, EventId, Keys, Kind, Options,
+    Tag, Timestamp, UnsignedEvent,
+};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DbConn, EntityTrait, FromQueryResult, QueryFilter, QuerySelect,
+    Set,
+};
 use serde::Deserialize;
 use serde_aux::prelude::deserialize_number_from_string;
 use serde_json::json;
+use std::{net::SocketAddr, str::FromStr, sync::Arc, time::Duration};
+use tokio::time::sleep;
 
 #[derive(thiserror::Error, Debug)]
 pub enum LnurlError {
@@ -51,10 +61,11 @@ fn host_from_uri(uri: &Uri) -> &str {
     uri.authority().map(|a| a.as_str()).unwrap_or("")
 }
 
-// lud06 lnurlp/{usename}
-// lud16 .well-known/lnurlp/{usename}
+// LUD-06 lnurlp/{usename}
+// LUD-16 .well-known/lnurlp/{usename}
 // usename: bech32-serialized pubkey or a-z0-9-_. username
 // LUD-18 payerData
+// LUD-12 commentAllowed
 
 #[get("/{usename}")]
 pub async fn info(
@@ -62,7 +73,16 @@ pub async fn info(
     state: web::Data<AppState>,
     username: web::Path<String>,
 ) -> Result<impl Responder, LnurlError> {
-    // let username = username.into_inner();
+    let username = username.into_inner();
+    // check username
+    if XOnlyPublicKey::from_bech32(&username).is_err() {
+        state
+            .service
+            .get_user_by_name(username.clone())
+            .await?
+            .ok_or(Error::Str("invalid user"))?;
+    }
+
     let (allow, pubkey) = if let Some(key) = state.setting.lnurl.privkey {
         let keys = Keys::new(key);
         (true, keys.public_key().to_string())
@@ -125,13 +145,19 @@ pub async fn create_invoice(
             state.setting.lnurl.max_sendable / 1000,
         )));
     }
-    let comment = query.comment.clone().unwrap_or_default();
-    if comment.len() > setting.comment_allowed {
-        return Err(LnurlError::Invalid(format!(
-            "Comment too long (max: {} characters).",
-            setting.comment_allowed
-        )));
+
+    let payer_data = query.payerdata.clone();
+
+    let comment = query.comment.clone();
+    if let Some(comment) = &comment {
+        if comment.len() > setting.comment_allowed {
+            return Err(LnurlError::Invalid(format!(
+                "Comment too long (max: {} characters).",
+                setting.comment_allowed
+            )));
+        }
     }
+
     let event_str = query.nostr.clone().unwrap_or_default();
     let (memo, extra) = if state.setting.lnurl.privkey.is_some() && !event_str.is_empty() {
         let event = Event::from_json(&event_str).map_err(Error::from)?;
@@ -188,16 +214,19 @@ pub async fn create_invoice(
         }
         let extra = InvoiceExtra {
             source: "zap".to_owned(),
-            comment: Some(comment),
             zap: true,
+            comment,
             zap_receipt: None,
+            payer_data,
         };
         (event_str, extra)
     } else {
         let extra = InvoiceExtra {
             source: "lnurlp".to_owned(),
-            comment: Some(comment),
-            ..Default::default()
+            zap: false,
+            comment,
+            zap_receipt: None,
+            payer_data,
         };
         // lud06, lud18 description hash
         let memo = format!(
@@ -230,6 +259,7 @@ pub async fn create_invoice(
         .await?;
     let routes: Vec<String> = vec![];
 
+    // lud-09 successAction
     Ok(web::Json(json!({
         "status": "OK",
         "routes": routes,
@@ -239,4 +269,154 @@ pub async fn create_invoice(
             "message": "Thank you for your sats!"
         }
     })))
+}
+
+pub async fn loop_handle_receipts(state: Arc<AppState>, duration: Duration) -> Result<()> {
+    loop {
+        // TODO: log error
+        let _r = handle_receipts(&state).await;
+        sleep(duration).await;
+    }
+    // Ok(())
+}
+
+#[derive(FromQueryResult, Debug)]
+struct PartInvoice {
+    id: i32,
+    bolt11: String,
+    description: String,
+    paid_at: i64,
+    payment_preimage: Vec<u8>,
+}
+
+pub async fn handle_receipts(state: &AppState) -> Result<usize> {
+    let keys = Keys::new(state.setting.lnurl.privkey.unwrap());
+    let relays = &state.setting.lnurl.relays;
+    let proxy = state.setting.lnurl.proxy.as_ref();
+
+    let list = invoice::Entity::find()
+        .select_only()
+        .columns([
+            invoice::Column::Id,
+            invoice::Column::Bolt11,
+            invoice::Column::Zap,
+            invoice::Column::Status,
+            invoice::Column::ZapStatus,
+            invoice::Column::Description,
+            invoice::Column::PaidAt,
+            invoice::Column::PaymentPreimage,
+        ])
+        .filter(invoice::Column::Zap.eq(true))
+        .filter(invoice::Column::ZapStatus.eq(0))
+        .filter(invoice::Column::Status.eq(invoice::Status::Paid))
+        .filter(invoice::Column::Type.eq(invoice::Type::Invoice))
+        .into_model::<PartInvoice>()
+        .all(state.service.db())
+        .await?;
+    let mut success = 0;
+    for invoice in &list {
+        // TODO: log error
+        let r = send_receipt(state.service.db(), invoice, &keys, relays, proxy).await;
+        if r.is_ok() {
+            success += 1;
+        }
+    }
+    Ok(success)
+}
+
+async fn send_receipt(
+    db: &DbConn,
+    invoice: &PartInvoice,
+    keys: &Keys,
+    relays: &[String],
+    proxy: Option<&String>,
+) -> Result<()> {
+    let pubkey = keys.public_key();
+
+    let event = Event::from_json(&invoice.description)?;
+    let etag = event.tags.iter().find(|t| matches!(t, Tag::Event(_, _, _)));
+    let ptag = event.tags.iter().find(|t| matches!(t, Tag::PubKey(_, _)));
+
+    // merge extra relays and user relays
+    let mut relays = relays.to_vec();
+    relays.extend(
+        event
+            .tags
+            .iter()
+            .find_map(|t| {
+                if let Tag::Relays(r) = t {
+                    Some(r.iter().map(|r| r.to_string()).collect::<Vec<_>>())
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_default(),
+    );
+    relays.sort();
+    relays.dedup();
+
+    let mut tags = vec![
+        Tag::Bolt11(invoice.bolt11.clone()),
+        Tag::Description(invoice.description.clone()),
+        Tag::Preimage(hex::encode(&invoice.payment_preimage)),
+    ];
+    if let Some(t) = etag {
+        tags.push(t.clone());
+    }
+    if let Some(t) = ptag {
+        tags.push(t.clone());
+    }
+
+    let kind = Kind::Zap;
+    let content = "".to_owned();
+
+    let created_at: Timestamp = Timestamp::from(invoice.paid_at as u64);
+    let id = EventId::new(&pubkey, created_at, &kind, &tags, &content);
+    let unsigned_event = UnsignedEvent {
+        id,
+        pubkey,
+        created_at,
+        kind,
+        tags,
+        content,
+    };
+    let event = unsigned_event.sign(keys)?;
+    let event_json = event.as_json();
+    send_event(keys, relays, event, proxy).await?;
+
+    // mark success
+    invoice::ActiveModel {
+        id: Set(invoice.id),
+        zap_receipt: Set(Some(event_json)),
+        zap_status: Set(1),
+        ..Default::default()
+    }
+    .update(db)
+    .await?;
+
+    Ok(())
+}
+
+async fn send_event(
+    keys: &Keys,
+    relays: Vec<String>,
+    event: Event,
+    proxy: Option<&String>,
+) -> Result<()> {
+    let opts = Options::new();
+    let client = Client::with_opts(keys, opts);
+
+    let proxy = if let Some(proxy) = proxy {
+        Some(SocketAddr::from_str(proxy)?)
+    } else {
+        None
+    };
+
+    for url in relays {
+        client.add_relay(url, proxy).await?;
+    }
+    client.connect().await;
+
+    client.send_event(event).await?;
+    Ok(())
 }
