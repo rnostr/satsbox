@@ -1,6 +1,7 @@
 use crate::{now, setting::Fee, sha256, Error, Result};
-use entity::{invoice, record, user};
+use entity::{event, invoice, record, user};
 use lightning_client::{lightning, Lightning};
+use nostr_sdk::Event;
 use rand::RngCore;
 use sea_orm::{
     sea_query::Expr, ActiveModelTrait, ColumnTrait, DbConn, EntityTrait, NotSet, QueryFilter,
@@ -451,6 +452,68 @@ impl Service {
         }
 
         Ok(updated)
+    }
+
+    /// events service
+    pub async fn get_event(&self, event_id: Vec<u8>) -> Result<Option<event::Model>> {
+        Ok(event::Entity::find()
+            .filter(event::Column::EventId.eq(event_id))
+            .one(self.db())
+            .await?)
+    }
+
+    pub async fn create_event(&self, event: &Event) -> Result<Option<event::Model>> {
+        let now = now() as i64;
+        let res = event::ActiveModel {
+            id: NotSet,
+            event_id: Set(event.id.as_bytes().to_vec()),
+            json: Set(event.as_json()),
+            created_at: Set(now),
+            updated_at: Set(now),
+            status: Set(event::Status::Created),
+            message: NotSet,
+        }
+        .insert(self.db())
+        .await;
+        match res {
+            Ok(res) => Ok(Some(res)),
+            Err(e) => {
+                if matches!(
+                    e.sql_err(),
+                    Some(sea_orm::SqlErr::UniqueConstraintViolation(_))
+                ) {
+                    // return false unique constraint
+                    return Ok(None);
+                }
+                Err(e.into())
+            }
+        }
+    }
+
+    pub async fn update_event_error(&self, id: i32, err: &Error) -> Result<()> {
+        event::ActiveModel {
+            id: Set(id),
+            status: Set(event::Status::Failed),
+            message: Set(err.to_string()),
+            updated_at: Set(now() as i64),
+            ..Default::default()
+        }
+        .update(self.db())
+        .await?;
+        Ok(())
+    }
+
+    pub async fn update_event_success(&self, id: i32, message: String) -> Result<()> {
+        event::ActiveModel {
+            id: Set(id),
+            status: Set(event::Status::Succeeded),
+            message: Set(message),
+            updated_at: Set(now() as i64),
+            ..Default::default()
+        }
+        .update(self.db())
+        .await?;
+        Ok(())
     }
 }
 

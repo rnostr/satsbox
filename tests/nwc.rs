@@ -69,7 +69,7 @@ async fn get_balance() -> Result<()> {
     .await?;
     assert_eq!(res.content, nwc::METHODS);
 
-    let res = request(
+    let (res, _) = request(
         &client,
         &server_keys,
         &client_keys,
@@ -90,7 +90,7 @@ async fn get_balance() -> Result<()> {
         .admin_adjust_user_balance(&user, sats * 1000, None)
         .await?;
 
-    let res = request(
+    let (res, event) = request(
         &client,
         &server_keys,
         &client_keys,
@@ -100,11 +100,18 @@ async fn get_balance() -> Result<()> {
     )
     .await?;
     assert_eq!(res["balance"], json!(sats));
+    let model = state
+        .service
+        .get_event(event.id.as_bytes().to_vec())
+        .await?
+        .unwrap();
+    assert_eq!(model.status, entity::event::Status::Succeeded);
 
     handle.abort();
     Ok(())
 }
 
+// the encrypted message have random iv, so the event is not the same
 async fn request(
     client: &Client,
     server_keys: &Keys,
@@ -112,10 +119,10 @@ async fn request(
     method: &str,
     params: Value,
     timeout_seconds: u64,
-) -> anyhow::Result<Value> {
+) -> anyhow::Result<(Value, Event)> {
     let event = create_request_event(server_keys.public_key(), client_keys, method, params)?;
     let event_id = event.id.clone();
-    client.send_event(event).await?;
+    client.send_event(event.clone()).await?;
     let res = wait(&client, timeout_seconds, |notification| async {
         match notification {
             RelayPoolNotification::Event(_url, event) => {
@@ -132,7 +139,7 @@ async fn request(
     if res.0 != method {
         return Err(anyhow::Error::new(satsbox::Error::Str("method not match")));
     }
-    Ok(res.1)
+    Ok((res.1, event))
 }
 
 async fn wait<F, Fut, O>(client: &Client, timeout_seconds: u64, func: F) -> satsbox::Result<O>
@@ -184,11 +191,13 @@ fn create_request_event(
         "method": method,
         "params": params,
     });
+
     let content = nips::nip04::encrypt(
         &client_keys.secret_key().unwrap(),
         &server_pubkey,
         serde_json::to_string(&content)?,
     )?;
+
     Ok(EventBuilder::new(
         23194.into(),
         content,

@@ -39,6 +39,14 @@ pub struct Request {
     pub params: Value,
 }
 
+fn verify_time(created_at: i64, diff_seconds: u64) -> Result<()> {
+    if (now() as i64 - created_at).abs() > diff_seconds as i64 {
+        Err(Error::Str("Invalid event, timestamp out of range"))
+    } else {
+        Ok(())
+    }
+}
+
 fn parse_request(event: &Event, keys: &Keys) -> Result<Request> {
     if event.kind != Kind::WalletConnectRequest
         || !event.tags.iter().any(|t| match t {
@@ -58,7 +66,13 @@ fn parse_request(event: &Event, keys: &Keys) -> Result<Request> {
     Ok(serde_json::from_str(&content)?)
 }
 
-async fn handle_request(pubkey: Vec<u8>, req: Request, nwc: &Nwc) -> Result<Value> {
+async fn handle_request(
+    created_at: i64,
+    pubkey: Vec<u8>,
+    req: Request,
+    nwc: &Nwc,
+) -> Result<Value> {
+    verify_time(created_at, 60 * 5)?;
     nwc.limiter_per_second
         .check()
         .map_err(|_| Error::RateLimited)?;
@@ -147,20 +161,45 @@ fn error_response(err: &Error, method: RequestMethod) -> Value {
 }
 
 async fn handle_event(event: Event, nwc: Nwc) -> Result<()> {
-    // TODO: check repeat event from db, log event
-    let req = parse_request(&event, &nwc.keys)?;
+    let model = nwc.state.service.create_event(&event).await?;
+    if model.is_none() {
+        // repeat event
+        return Ok(());
+    }
+    let model = model.unwrap();
+
+    let res = parse_request(&event, &nwc.keys);
+    if let Err(e) = res {
+        nwc.state.service.update_event_error(model.id, &e).await?;
+        return Ok(());
+    }
+    let req = res.unwrap();
+
     let method = req.method.clone();
     let user_pubkey = event.pubkey;
 
-    let res = handle_request(user_pubkey.serialize().to_vec(), req, &nwc).await;
+    let res = handle_request(
+        event.created_at.as_i64(),
+        user_pubkey.serialize().to_vec(),
+        req,
+        &nwc,
+    )
+    .await;
     let res = match res {
         Ok(res) => {
+            nwc.state
+                .service
+                .update_event_success(model.id, "".to_owned())
+                .await?;
             json!({
                 "result_type": method,
                 "result": res,
             })
         }
-        Err(err) => error_response(&err, method),
+        Err(err) => {
+            nwc.state.service.update_event_error(model.id, &err).await?;
+            error_response(&err, method)
+        }
     };
 
     nwc.client
