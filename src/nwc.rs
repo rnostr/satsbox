@@ -161,6 +161,17 @@ fn error_response(err: &Error, method: RequestMethod) -> Value {
 }
 
 async fn handle_event(event: Event, nwc: Nwc) -> Result<()> {
+    if nwc
+        .state
+        .setting
+        .auth
+        .validate(event.pubkey.serialize().as_slice())
+        .is_err()
+    {
+        // has not permission
+        return Ok(());
+    }
+
     let model = nwc.state.service.create_event(&event).await?;
     if model.is_none() {
         // repeat event
@@ -227,7 +238,7 @@ pub struct Nwc {
 impl Nwc {
     pub fn new(state: Arc<AppState>) -> Self {
         let lim = RateLimiter::direct(Quota::per_second(state.setting.nwc.rate_limit_per_second));
-        let keys = Keys::new(state.setting.nwc.privkey.unwrap());
+        let keys = Keys::new(state.setting.nwc.privkey.unwrap().into());
         let opts = Options::new();
         let client = Client::with_opts(&keys, opts);
         Self {

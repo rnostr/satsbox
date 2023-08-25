@@ -151,12 +151,13 @@ async fn zaps() -> Result<()> {
     let mut state = create_test_state().await?;
     state.service.self_payment = true;
 
-    state.setting.lnurl.privkey = Some(SecretKey::from_str(
-        "6b911fd37cdf5c81d4c0adb1ab7fa822ed253ab0ad9aa18d77257c88b29b0000",
-    )?);
+    state.setting.lnurl.privkey = Some(
+        SecretKey::from_str("6b911fd37cdf5c81d4c0adb1ab7fa822ed253ab0ad9aa18d77257c88b29b0000")?
+            .into(),
+    );
     let state = web::Data::new(state);
 
-    let server_keys = Keys::new(state.setting.lnurl.privkey.unwrap());
+    let server_keys = Keys::new(state.setting.lnurl.privkey.unwrap().into());
 
     let user = state
         .service

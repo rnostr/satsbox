@@ -122,7 +122,7 @@ impl FromRequest for NostrAuth {
         Box::pin(async move {
             if let Some(auth) = req.headers().get(AUTHORIZATION) {
                 if let Ok(auth) = auth.to_str() {
-                    if let Some(_state) = req.app_data::<web::Data<AppState>>() {
+                    if let Some(state) = req.app_data::<web::Data<AppState>>() {
                         if auth.starts_with("Nostr") || auth.starts_with("nostr") {
                             let bytes = web::Bytes::from_request(&req, &mut payload)
                                 .await
@@ -132,6 +132,9 @@ impl FromRequest for NostrAuth {
 
                             let token = auth[5..auth.len()].trim();
                             let user = NostrAuth::from_token(token, bytes.to_vec())?;
+
+                            state.setting.auth.validate(&user.pubkey)?;
+
                             user.verify_time(60)?;
                             user.verify_http(&full_uri_from_req(&req), req.method().as_str())?;
                             return Ok(user);

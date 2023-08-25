@@ -15,6 +15,7 @@ pub mod nwc;
 mod service;
 pub mod setting;
 pub use lightning_client::sha256;
+pub mod key;
 
 pub use {
     app::*,
@@ -65,12 +66,14 @@ pub enum Error {
     InsufficientBalance,
     #[error("Rate limiter exceeded")]
     RateLimited,
+    #[error("Pubkey not in whitelist")]
+    Whitelist,
 }
 
 impl ResponseError for Error {
     fn status_code(&self) -> StatusCode {
         match self {
-            Error::Auth(_) => StatusCode::UNAUTHORIZED,
+            Error::Auth(_) | Error::Whitelist => StatusCode::UNAUTHORIZED,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }

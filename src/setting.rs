@@ -1,7 +1,11 @@
 use crate::Error;
-use crate::{hash::NoOpHasherDefault, Result};
+use crate::{
+    hash::NoOpHasherDefault,
+    key::{Privkey, Pubkey},
+    Result,
+};
 use config::{Config, Environment, File, FileFormat};
-use nostr_sdk::secp256k1::SecretKey;
+use nostr_sdk::secp256k1::XOnlyPublicKey;
 use notify::{event::ModifyKind, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use parking_lot::RwLock;
 use serde::de::DeserializeOwned;
@@ -139,7 +143,9 @@ impl Fee {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(default)]
 pub struct Auth {
-    /// auth secret
+    /// only whitelist pubkey can use service.
+    pub whitelist: Vec<Pubkey>,
+    /// jwt auth secret
     pub secret: String,
 
     /// jwt refresh token expiry in seconds
@@ -155,6 +161,18 @@ impl Default for Auth {
             secret: "test".to_owned(),
             refresh_token_expiry: 7 * 24 * 60 * 60,
             access_token_expiry: 2 * 24 * 60 * 60,
+            whitelist: Default::default(),
+        }
+    }
+}
+
+impl Auth {
+    pub fn validate(&self, pubkey: &[u8]) -> Result<()> {
+        let key: Pubkey = XOnlyPublicKey::from_slice(pubkey)?.into();
+        if self.whitelist.is_empty() || self.whitelist.contains(&key) {
+            Ok(())
+        } else {
+            Err(Error::Whitelist)
         }
     }
 }
@@ -166,7 +184,7 @@ pub struct Nwc {
     /// relay server, don't support nwc if relays is empty.
     pub relays: Vec<String>,
     /// nwc private key, don't support nwc if not set.
-    pub privkey: Option<SecretKey>,
+    pub privkey: Option<Privkey>,
 
     pub proxy: Option<String>,
 
@@ -198,7 +216,7 @@ pub struct Lnurl {
     pub max_sendable: u64,
     pub comment_allowed: usize,
     /// nostr private key for send zap receipt, don't support nostr if not set.
-    pub privkey: Option<SecretKey>,
+    pub privkey: Option<Privkey>,
 
     /// extra nostr relay server for sending zap receipt
     pub relays: Vec<String>,

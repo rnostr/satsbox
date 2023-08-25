@@ -69,7 +69,7 @@ pub enum LndhubError {
 impl LndhubError {
     pub fn code(&self) -> u16 {
         match self {
-            LndhubError::Base(Error::Auth(_)) => 1,
+            LndhubError::Base(Error::Auth(_)) | LndhubError::Base(Error::Whitelist) => 1,
             LndhubError::BadAuth => 1,
             LndhubError::BadArguments => 8,
             LndhubError::Base(_) => 6,
@@ -181,6 +181,11 @@ pub async fn auth(
     } else {
         return Err(LndhubError::BadArguments);
     };
+
+    if state.setting.auth.validate(&user.pubkey).is_err() {
+        // has not permission
+        return Err(LndhubError::BadAuth);
+    }
 
     let refresh_token = JwtToken::generate(
         user.id,

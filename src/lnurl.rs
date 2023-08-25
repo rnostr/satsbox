@@ -75,16 +75,21 @@ pub async fn info(
 ) -> Result<impl Responder, LnurlError> {
     let username = username.into_inner();
     // check username
-    if XOnlyPublicKey::from_bech32(&username).is_err() {
-        state
-            .service
-            .get_user_by_name(username.clone())
-            .await?
-            .ok_or(Error::Str("invalid user"))?;
-    }
+    let pubkey = match XOnlyPublicKey::from_bech32(&username) {
+        Ok(key) => key.serialize().to_vec(),
+        Err(_) => {
+            let user = state
+                .service
+                .get_user_by_name(username.clone())
+                .await?
+                .ok_or(Error::Str("invalid user"))?;
+            user.pubkey
+        }
+    };
+    state.setting.auth.validate(&pubkey)?;
 
     let (allow, pubkey) = if let Some(key) = state.setting.lnurl.privkey {
-        let keys = Keys::new(key);
+        let keys = Keys::new(key.into());
         (true, keys.public_key().to_string())
     } else {
         (false, Default::default())
@@ -238,17 +243,17 @@ pub async fn create_invoice(
     };
 
     let user = if let Ok(pubkey) = XOnlyPublicKey::from_bech32(&username) {
-        // pubkey
-        state
-            .service
-            .get_or_create_user(pubkey.serialize().to_vec())
-            .await?
+        let pubkey = pubkey.serialize().to_vec();
+        state.setting.auth.validate(&pubkey)?;
+        state.service.get_or_create_user(pubkey).await?
     } else {
-        state
+        let user = state
             .service
             .get_user_by_name(username)
             .await?
-            .ok_or(Error::Str("invalid user"))?
+            .ok_or(Error::Str("invalid user"))?;
+        state.setting.auth.validate(&user.pubkey)?;
+        user
     };
 
     let expiry = 3600 * 24; // one day
@@ -290,7 +295,7 @@ struct PartInvoice {
 }
 
 pub async fn handle_receipts(state: &AppState) -> Result<usize> {
-    let keys = Keys::new(state.setting.lnurl.privkey.unwrap());
+    let keys = Keys::new(state.setting.lnurl.privkey.unwrap().into());
     let relays = &state.setting.lnurl.relays;
     let proxy = state.setting.lnurl.proxy.as_ref();
 

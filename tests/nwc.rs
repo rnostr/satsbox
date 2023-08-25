@@ -21,11 +21,12 @@ async fn get_balance() -> Result<()> {
     // tracing_subscriber::fmt::init();
 
     let mut state = create_test_state().await?;
-    state.setting.nwc.privkey = Some(SecretKey::from_str(
-        "6b911fd37cdf5c81d4c0adb1ab7fa822ed253ab0ad9aa18d77257c88b29b0000",
-    )?);
+    state.setting.nwc.privkey = Some(
+        SecretKey::from_str("6b911fd37cdf5c81d4c0adb1ab7fa822ed253ab0ad9aa18d77257c88b29b0000")?
+            .into(),
+    );
 
-    let server_keys = Keys::new(state.setting.nwc.privkey.unwrap());
+    let server_keys = Keys::new(state.setting.nwc.privkey.unwrap().into());
 
     let client_priv =
         SecretKey::from_str("7b911fd37cdf5c81d4c0adb1ab7fa822ed253ab0ad9aa18d77257c88b29b0000")?;
