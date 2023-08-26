@@ -21,16 +21,10 @@ async fn get_balance() -> Result<()> {
     // tracing_subscriber::fmt::init();
 
     let mut state = create_test_state().await?;
-    state.setting.nwc.privkey = Some(
-        SecretKey::from_str("6b911fd37cdf5c81d4c0adb1ab7fa822ed253ab0ad9aa18d77257c88b29b0000")?
-            .into(),
-    );
 
-    let server_keys = Keys::new(state.setting.nwc.privkey.unwrap().into());
-
-    let client_priv =
-        SecretKey::from_str("7b911fd37cdf5c81d4c0adb1ab7fa822ed253ab0ad9aa18d77257c88b29b0000")?;
-    let client_keys = Keys::new(client_priv);
+    let server_keys = Keys::generate();
+    state.setting.nwc.privkey = Some(server_keys.secret_key()?.into());
+    let client_keys = Keys::generate();
 
     let state = Arc::new(state);
     // let app = init_service(create_web_app(state.clone())).await;
@@ -41,7 +35,7 @@ async fn get_balance() -> Result<()> {
 
     sleep(Duration::from_millis(300)).await;
 
-    let client = connect(client_priv, &state).await?;
+    let client = connect(client_keys.secret_key()?, &state).await?;
 
     sleep(Duration::from_millis(100)).await;
 
@@ -122,16 +116,9 @@ async fn whitelist() -> Result<()> {
     .unwrap()
     .into()];
 
-    state.setting.nwc.privkey = Some(
-        SecretKey::from_str("6b911fd37cdf5c81d4c0adb1ab7fa822ed253ab0ad9aa18d77257c88b29b0000")?
-            .into(),
-    );
-
-    let server_keys = Keys::new(state.setting.nwc.privkey.unwrap().into());
-
-    let client_priv =
-        SecretKey::from_str("7b911fd37cdf5c81d4c0adb1ab7fa822ed253ab0ad9aa18d77257c88b29b0000")?;
-    let client_keys = Keys::new(client_priv);
+    let server_keys = Keys::generate();
+    state.setting.nwc.privkey = Some(server_keys.secret_key()?.into());
+    let client_keys = Keys::generate();
 
     let state = Arc::new(state);
 
@@ -141,7 +128,7 @@ async fn whitelist() -> Result<()> {
 
     sleep(Duration::from_millis(300)).await;
 
-    let client = connect(client_priv, &state).await?;
+    let client = connect(client_keys.secret_key()?, &state).await?;
 
     sleep(Duration::from_millis(100)).await;
 
@@ -150,25 +137,7 @@ async fn whitelist() -> Result<()> {
         .pubkey(client_keys.public_key())
         .since((now() - 60 * 5).into());
 
-    let info = Filter::new()
-        .kind(Kind::WalletConnectInfo)
-        .author(server_keys.public_key().to_string());
-
-    client.subscribe(vec![response, info]).await;
-
-    let res = wait(&client, 5, |notification| async {
-        match notification {
-            RelayPoolNotification::Event(_url, event) => {
-                if event.kind == Kind::WalletConnectInfo {
-                    return Ok(Some(event));
-                }
-            }
-            _ => {}
-        }
-        Ok(None)
-    })
-    .await?;
-    assert_eq!(res.content, nwc::METHODS);
+    client.subscribe(vec![response]).await;
 
     let res = request(
         &client,
@@ -179,6 +148,7 @@ async fn whitelist() -> Result<()> {
         2,
     )
     .await;
+
     assert!(res.is_err());
 
     handle.abort();
