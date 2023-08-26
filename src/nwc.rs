@@ -165,7 +165,7 @@ async fn handle_event(event: Event, nwc: Nwc) -> Result<()> {
         .state
         .setting
         .auth
-        .validate(event.pubkey.serialize().as_slice())
+        .check_permission(event.pubkey.serialize().as_slice())
         .is_err()
     {
         // has not permission

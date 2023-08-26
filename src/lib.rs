@@ -66,14 +66,12 @@ pub enum Error {
     InsufficientBalance,
     #[error("Rate limiter exceeded")]
     RateLimited,
-    #[error("Pubkey not in whitelist")]
-    Whitelist,
 }
 
 impl ResponseError for Error {
     fn status_code(&self) -> StatusCode {
         match self {
-            Error::Auth(_) | Error::Whitelist => StatusCode::UNAUTHORIZED,
+            Error::Auth(_) => StatusCode::UNAUTHORIZED,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }

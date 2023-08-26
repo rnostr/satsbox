@@ -22,4 +22,6 @@ pub enum AuthError {
     Invalid(&'static str),
     // #[error("Unauthorized")]
     // Unauthorized,
+    #[error("Pubkey not in whitelist")]
+    Whitelist,
 }

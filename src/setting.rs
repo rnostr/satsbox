@@ -1,3 +1,4 @@
+use crate::auth::AuthError;
 use crate::Error;
 use crate::{
     hash::NoOpHasherDefault,
@@ -167,12 +168,12 @@ impl Default for Auth {
 }
 
 impl Auth {
-    pub fn validate(&self, pubkey: &[u8]) -> Result<()> {
+    pub fn check_permission(&self, pubkey: &[u8]) -> Result<()> {
         let key: Pubkey = XOnlyPublicKey::from_slice(pubkey)?.into();
         if self.whitelist.is_empty() || self.whitelist.contains(&key) {
             Ok(())
         } else {
-            Err(Error::Whitelist)
+            Err(AuthError::Whitelist.into())
         }
     }
 }

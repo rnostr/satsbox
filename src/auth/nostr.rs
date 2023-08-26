@@ -133,7 +133,7 @@ impl FromRequest for NostrAuth {
                             let token = auth[5..auth.len()].trim();
                             let user = NostrAuth::from_token(token, bytes.to_vec())?;
 
-                            state.setting.auth.validate(&user.pubkey)?;
+                            state.setting.auth.check_permission(&user.pubkey)?;
 
                             user.verify_time(60)?;
                             user.verify_http(&full_uri_from_req(&req), req.method().as_str())?;

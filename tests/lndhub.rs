@@ -7,9 +7,10 @@ use actix_web::{
     web,
 };
 use anyhow::Result;
+use nostr_sdk::secp256k1::XOnlyPublicKey;
 use satsbox::{create_web_app, AppState};
 use serde_json::json;
-use std::time::Duration;
+use std::{str::FromStr, time::Duration};
 use util::create_test_state;
 
 mod util;
@@ -108,6 +109,64 @@ async fn auth() -> Result<()> {
     assert_eq!(status, 200);
     assert_eq!(val["code"], json!(1));
 
+    Ok(())
+}
+
+#[actix_rt::test]
+async fn whitelist() -> Result<()> {
+    let mut state = create_test_state().await?;
+    state.setting.auth.whitelist = vec![XOnlyPublicKey::from_str(
+        "000003a91077fc049b8371e7a523fb5dfd9daff4522aa3f510d02bc9f490ca35",
+    )
+    .unwrap()
+    .into()];
+
+    let state = web::Data::new(state);
+    let app = init_service(create_web_app(state.clone())).await;
+    sleep(Duration::from_millis(50)).await;
+
+    let pubkey_str = "000003a91077fc049b8371e7a523fb5dfd9daff4522aa3f510d02bc9f490ca35".to_string();
+    let password = "random password".to_string();
+    let pubkey = hex::decode(&pubkey_str)?;
+    let user = state.service.get_or_create_user(pubkey.clone()).await?;
+    state
+        .service
+        .update_user_password(user.id, Some(password.clone()))
+        .await?;
+
+    let pubkey_str1 =
+        "4f197a5c455b0998026380e5f492b4915ae93c4317050ac8948d9293d1e8cd20".to_string();
+    let user1 = state
+        .service
+        .get_or_create_user(hex::decode(&pubkey_str1)?)
+        .await?;
+    state
+        .service
+        .update_user_password(user1.id, Some(password.clone()))
+        .await?;
+
+    let (val, _) = util::post(
+        &app,
+        "/auth",
+        json!({
+            "login": pubkey_str,
+            "password": password,
+        }),
+    )
+    .await?;
+    assert!(val["access_token"].is_string());
+
+    let (val, _) = util::post(
+        &app,
+        "/auth",
+        json!({
+            "login": pubkey_str1,
+            "password": password,
+        }),
+    )
+    .await?;
+    assert_eq!(val["error"], json!(true));
+    assert_eq!(val["code"], json!(1));
     Ok(())
 }
 

@@ -112,6 +112,79 @@ async fn get_balance() -> Result<()> {
     Ok(())
 }
 
+#[actix_rt::test]
+async fn whitelist() -> Result<()> {
+    let mut state = create_test_state().await?;
+
+    state.setting.auth.whitelist = vec![XOnlyPublicKey::from_str(
+        "000003a91077fc049b8371e7a523fb5dfd9daff4522aa3f510d02bc9f490ca35",
+    )
+    .unwrap()
+    .into()];
+
+    state.setting.nwc.privkey = Some(
+        SecretKey::from_str("6b911fd37cdf5c81d4c0adb1ab7fa822ed253ab0ad9aa18d77257c88b29b0000")?
+            .into(),
+    );
+
+    let server_keys = Keys::new(state.setting.nwc.privkey.unwrap().into());
+
+    let client_priv =
+        SecretKey::from_str("7b911fd37cdf5c81d4c0adb1ab7fa822ed253ab0ad9aa18d77257c88b29b0000")?;
+    let client_keys = Keys::new(client_priv);
+
+    let state = Arc::new(state);
+
+    let nwc = nwc::Nwc::new(state.clone());
+    nwc.connect().await?;
+    let handle = tokio::spawn(async move { nwc.handle_notifications().await });
+
+    sleep(Duration::from_millis(300)).await;
+
+    let client = connect(client_priv, &state).await?;
+
+    sleep(Duration::from_millis(100)).await;
+
+    let response = Filter::new()
+        .kind(Kind::WalletConnectResponse)
+        .pubkey(client_keys.public_key())
+        .since((now() - 60 * 5).into());
+
+    let info = Filter::new()
+        .kind(Kind::WalletConnectInfo)
+        .author(server_keys.public_key().to_string());
+
+    client.subscribe(vec![response, info]).await;
+
+    let res = wait(&client, 5, |notification| async {
+        match notification {
+            RelayPoolNotification::Event(_url, event) => {
+                if event.kind == Kind::WalletConnectInfo {
+                    return Ok(Some(event));
+                }
+            }
+            _ => {}
+        }
+        Ok(None)
+    })
+    .await?;
+    assert_eq!(res.content, nwc::METHODS);
+
+    let res = request(
+        &client,
+        &server_keys,
+        &client_keys,
+        "get_balance",
+        json!({}),
+        2,
+    )
+    .await;
+    assert!(res.is_err());
+
+    handle.abort();
+    Ok(())
+}
+
 // the encrypted message have random iv, so the event is not the same
 async fn request(
     client: &Client,

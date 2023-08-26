@@ -86,7 +86,7 @@ pub async fn info(
             user.pubkey
         }
     };
-    state.setting.auth.validate(&pubkey)?;
+    state.setting.auth.check_permission(&pubkey)?;
 
     let (allow, pubkey) = if let Some(key) = state.setting.lnurl.privkey {
         let keys = Keys::new(key.into());
@@ -244,7 +244,7 @@ pub async fn create_invoice(
 
     let user = if let Ok(pubkey) = XOnlyPublicKey::from_bech32(&username) {
         let pubkey = pubkey.serialize().to_vec();
-        state.setting.auth.validate(&pubkey)?;
+        state.setting.auth.check_permission(&pubkey)?;
         state.service.get_or_create_user(pubkey).await?
     } else {
         let user = state
@@ -252,7 +252,7 @@ pub async fn create_invoice(
             .get_user_by_name(username)
             .await?
             .ok_or(Error::Str("invalid user"))?;
-        state.setting.auth.validate(&user.pubkey)?;
+        state.setting.auth.check_permission(&user.pubkey)?;
         user
     };
 
