@@ -4,8 +4,8 @@ use lightning_client::{lightning, Lightning};
 use nostr_sdk::Event;
 use rand::RngCore;
 use sea_orm::{
-    sea_query::Expr, ActiveModelTrait, ColumnTrait, DbConn, EntityTrait, NotSet, QueryFilter,
-    QueryOrder, Set, TransactionTrait,
+    sea_query::Expr, ActiveModelTrait, ColumnTrait, DatabaseTransaction, DbConn, EntityTrait,
+    NotSet, QueryFilter, QueryOrder, Set, TransactionTrait,
 };
 use tokio::time::sleep;
 
@@ -19,7 +19,7 @@ pub fn rand_preimage() -> Vec<u8> {
 
 #[derive(Default)]
 pub struct InvoiceExtra {
-    pub source: String,
+    pub source: invoice::Source,
     pub comment: Option<String>,
     pub zap: bool,
     pub zap_receipt: Option<String>,
@@ -27,9 +27,9 @@ pub struct InvoiceExtra {
 }
 
 impl InvoiceExtra {
-    pub fn new<S: Into<String>>(source: S) -> Self {
+    pub fn new(source: invoice::Source) -> Self {
         Self {
-            source: source.into(),
+            source,
             ..Default::default()
         }
     }
@@ -163,6 +163,7 @@ impl Service {
             lock_amount: NotSet,
             username: NotSet,
             password: NotSet,
+            donate_amount: NotSet,
             created_at: Set(now),
             updated_at: Set(now),
         }
@@ -203,7 +204,7 @@ impl Service {
         user: &user::Model,
         bolt11: String,
         fee: &Fee,
-        source: String,
+        source: invoice::Source,
         ignore_result: bool,
     ) -> Result<invoice::Model> {
         let inv = lightning::Invoice::from_bolt11(bolt11.clone())?;
@@ -221,6 +222,7 @@ impl Service {
                 fee,
                 self.name.clone(),
                 self.self_payment,
+                source,
             )
             .await
         } else {
@@ -628,7 +630,13 @@ async fn invoice_paid(
     .insert(&txn)
     .await?;
 
+    sync_donation(&txn, invoice).await?;
+
     txn.commit().await?;
+    Ok(())
+}
+
+async fn sync_donation(_txn: &DatabaseTransaction, _invoice: &invoice::Model) -> Result<()> {
     Ok(())
 }
 
@@ -639,6 +647,7 @@ async fn internal_pay(
     fee: &Fee,
     service: String,
     self_payment: bool,
+    source: invoice::Source,
 ) -> Result<invoice::Model> {
     let payment_hash = inv.payment_hash.clone();
     let amount = inv.amount as i64;
@@ -673,7 +682,7 @@ async fn internal_pay(
         payee_inv.payment_preimage.clone(),
         inv,
         service,
-        InvoiceExtra::new(""),
+        InvoiceExtra::new(source),
     );
     // payment
     payment_model.r#type = Set(invoice::Type::Payment);
@@ -760,6 +769,9 @@ async fn internal_pay(
     )
     .insert(&txn)
     .await?;
+
+    sync_donation(&txn, &payee_inv).await?;
+
     txn.commit().await?;
 
     Ok(payment)

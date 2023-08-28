@@ -235,7 +235,7 @@ async fn zaps() -> Result<()> {
             &user,
             pr.to_owned(),
             &state.setting.fee,
-            "test".to_owned(),
+            entity::invoice::Source::Test,
             false,
         )
         .await?;

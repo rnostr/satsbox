@@ -44,7 +44,7 @@ async fn create_invoice() -> Result<()> {
     // 20 btc
     let msats = 2_000_000_000_000;
 
-    let source = "test".to_owned();
+    let source = entity::invoice::Source::Test;
     let state = create_test_state(None).await?;
 
     let service = &state.service;
@@ -55,7 +55,7 @@ async fn create_invoice() -> Result<()> {
             memo.clone(),
             msats,
             expiry,
-            InvoiceExtra::new(&source),
+            InvoiceExtra::new(source.clone()),
         )
         .await?;
 
@@ -78,7 +78,7 @@ async fn internal_payment() -> Result<()> {
     // 2k sats
     let msats: i64 = 2_000_000;
 
-    let source = "test".to_owned();
+    let source = entity::invoice::Source::Test;
     let state = create_test_state(None).await?;
 
     let service = &state.service;
@@ -89,7 +89,7 @@ async fn internal_payment() -> Result<()> {
             memo.clone(),
             msats as u64,
             expiry,
-            InvoiceExtra::new(&source),
+            InvoiceExtra::new(source),
         )
         .await?;
     assert_eq!(payee_invoice.status, invoice::Status::Unpaid);
@@ -109,7 +109,7 @@ async fn internal_payment() -> Result<()> {
             &payer_user,
             payee_invoice.bolt11.clone(),
             &fee,
-            "test".to_string(),
+            entity::invoice::Source::Test,
             false,
         )
         .await;
@@ -122,21 +122,21 @@ async fn internal_payment() -> Result<()> {
     // println!("{:?}", payer_user);
 
     // let payment = service
-    //     .pay(&payer_user, payee_invoice.bolt11.clone(), &fee, "test".to_string(), false)
+    //     .pay(&payer_user, payee_invoice.bolt11.clone(), &fee, entity::invoice::Source::Test, false)
     //     .await?;
     let res = tokio::join!(
         service.pay(
             &payer_user,
             payee_invoice.bolt11.clone(),
             &fee,
-            "test".to_string(),
+            entity::invoice::Source::Test,
             false
         ),
         service.pay(
             &payer_user,
             payee_invoice.bolt11.clone(),
             &fee,
-            "test".to_string(),
+            entity::invoice::Source::Test,
             false
         )
     );
@@ -180,7 +180,7 @@ async fn internal_payment() -> Result<()> {
             &payer_user,
             payee_invoice.bolt11.clone(),
             &fee,
-            "test".to_string(),
+            entity::invoice::Source::Test,
             false,
         )
         .await;
@@ -198,7 +198,7 @@ async fn self_payment() -> Result<()> {
     // 2k sats
     let msats: i64 = 2_000_000;
 
-    let source = "test".to_owned();
+    let source = entity::invoice::Source::Test;
     let mut state = create_test_state(None).await?;
     state.service.self_payment = true;
 
@@ -210,7 +210,7 @@ async fn self_payment() -> Result<()> {
             memo.clone(),
             msats as u64,
             expiry,
-            InvoiceExtra::new(&source),
+            InvoiceExtra::new(source),
         )
         .await?;
     assert_eq!(invoice.status, invoice::Status::Unpaid);
@@ -232,14 +232,14 @@ async fn self_payment() -> Result<()> {
             &user,
             invoice.bolt11.clone(),
             &fee,
-            "test".to_string(),
+            entity::invoice::Source::Test,
             false
         ),
         service.pay(
             &user,
             invoice.bolt11.clone(),
             &fee,
-            "test".to_string(),
+            entity::invoice::Source::Test,
             false
         )
     );
@@ -304,7 +304,7 @@ async fn pay(payer: Lightning, payee: Lightning, test_sync: bool) -> Result<()> 
     // 2k sats
     let msats: i64 = 2_000_000;
 
-    let source = "test".to_owned();
+    let source = entity::invoice::Source::Test;
     // create_test_state will refresh db
     let payee_state = create_test_state(Some(payee)).await?;
     let payer_state = create_test_state(Some(payer)).await?;
@@ -327,7 +327,7 @@ async fn pay(payer: Lightning, payee: Lightning, test_sync: bool) -> Result<()> 
             memo.clone(),
             msats as u64,
             expiry,
-            InvoiceExtra::new(&source),
+            InvoiceExtra::new(source),
         )
         .await?;
     assert_eq!(payee_invoice.status, invoice::Status::Unpaid);
@@ -343,7 +343,7 @@ async fn pay(payer: Lightning, payee: Lightning, test_sync: bool) -> Result<()> 
             &payer_user,
             payee_invoice.bolt11.clone(),
             &fee,
-            "test".to_string(),
+            entity::invoice::Source::Test,
             false,
         )
         .await;
@@ -356,21 +356,21 @@ async fn pay(payer: Lightning, payee: Lightning, test_sync: bool) -> Result<()> 
     // println!("{:?}", payer_user);
 
     // let payment = payer_service
-    //     .pay(&payer_user, payee_invoice.bolt11.clone(), &fee, "test".to_string(), false)
+    //     .pay(&payer_user, payee_invoice.bolt11.clone(), &fee, entity::invoice::Source::Test, false)
     //     .await?;
     let res = tokio::join!(
         payer_service.pay(
             &payer_user,
             payee_invoice.bolt11.clone(),
             &fee,
-            "test".to_string(),
+            entity::invoice::Source::Test,
             test_sync
         ),
         payer_service.pay(
             &payer_user,
             payee_invoice.bolt11.clone(),
             &fee,
-            "test".to_string(),
+            entity::invoice::Source::Test,
             test_sync
         )
     );
@@ -424,7 +424,7 @@ async fn pay(payer: Lightning, payee: Lightning, test_sync: bool) -> Result<()> 
             &payer_user,
             payee_invoice.bolt11.clone(),
             &fee,
-            "test".to_string(),
+            entity::invoice::Source::Test,
             false,
         )
         .await;
@@ -443,7 +443,7 @@ async fn duplicate_payment() -> Result<()> {
     // 2k sats
     let msats: i64 = 2_000_000;
 
-    let source = "test".to_owned();
+    let source = entity::invoice::Source::Test;
     let state = create_test_state(Some(Lightning::Cln)).await?;
     let payer_state = create_test_state(Some(Lightning::Lnd)).await?;
 
@@ -455,7 +455,7 @@ async fn duplicate_payment() -> Result<()> {
             memo.clone(),
             msats as u64,
             expiry,
-            InvoiceExtra::new(&source),
+            InvoiceExtra::new(source),
         )
         .await?;
     assert_eq!(payee_invoice.status, invoice::Status::Unpaid);
@@ -476,21 +476,21 @@ async fn duplicate_payment() -> Result<()> {
     };
 
     // let payment = service
-    //     .pay(&payer_user, payee_invoice.bolt11.clone(), &fee, "test".to_string(), false)
+    //     .pay(&payer_user, payee_invoice.bolt11.clone(), &fee, entity::invoice::Source::Test, false)
     //     .await?;
     let res = tokio::join!(
         service.pay(
             &payer_user,
             payee_invoice.bolt11.clone(),
             &fee,
-            "test".to_string(),
+            entity::invoice::Source::Test,
             false
         ),
         service.pay(
             &payer_user,
             payee_invoice.bolt11.clone(),
             &fee,
-            "test".to_string(),
+            entity::invoice::Source::Test,
             false
         )
     );
@@ -545,7 +545,7 @@ async fn duplicate_payment() -> Result<()> {
             &payer_user,
             payee_invoice.bolt11.clone(),
             &fee,
-            "test".to_string(),
+            entity::invoice::Source::Test,
             false,
         )
         .await;

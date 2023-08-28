@@ -19,6 +19,9 @@ pub struct Model {
     /// lndhub password
     pub password: Option<String>,
 
+    /// donate amount
+    pub donate_amount: i64,
+
     /// data create time
     pub created_at: i64,
     pub updated_at: i64,

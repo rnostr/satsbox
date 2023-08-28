@@ -91,7 +91,7 @@ async fn handle_request(
                             &user,
                             params.invoice,
                             &state.setting.fee,
-                            "nwc".to_string(),
+                            entity::invoice::Source::Nwc,
                             false,
                         )
                         .await?;

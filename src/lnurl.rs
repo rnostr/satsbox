@@ -218,7 +218,7 @@ pub async fn create_invoice(
             }
         }
         let extra = InvoiceExtra {
-            source: "zap".to_owned(),
+            source: invoice::Source::Zaps,
             zap: true,
             comment,
             zap_receipt: None,
@@ -227,7 +227,7 @@ pub async fn create_invoice(
         (event_str, extra)
     } else {
         let extra = InvoiceExtra {
-            source: "lnurlp".to_owned(),
+            source: invoice::Source::Lnurlp,
             zap: false,
             comment,
             zap_receipt: None,

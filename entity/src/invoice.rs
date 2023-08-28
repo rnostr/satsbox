@@ -18,6 +18,27 @@ pub enum Status {
     Canceled = 2,
 }
 
+#[derive(EnumIter, DeriveActiveEnum, Debug, Clone, PartialEq, Eq)]
+#[sea_orm(rs_type = "String", db_type = "String(Some(1))")]
+pub enum Source {
+    #[sea_orm(string_value = "test")]
+    Test,
+    #[sea_orm(string_value = "lndhub")]
+    Lndhub,
+    #[sea_orm(string_value = "lnurlp")]
+    Lnurlp,
+    #[sea_orm(string_value = "zaps")]
+    Zaps,
+    #[sea_orm(string_value = "nwc")]
+    Nwc,
+}
+
+impl Default for Source {
+    fn default() -> Self {
+        Self::Test
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq)]
 #[sea_orm(table_name = "invoices")]
 pub struct Model {
@@ -39,7 +60,7 @@ pub struct Model {
     pub status: Status,
 
     pub service: String,
-    pub source: String,
+    pub source: Source,
 
     #[sea_orm(column_type = "Binary(BlobSize::Blob(None))")]
     pub payment_hash: Vec<u8>,

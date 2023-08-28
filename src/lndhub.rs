@@ -259,7 +259,7 @@ pub async fn add_invoice(
         return Err(LndhubError::BadArguments);
     }
     let expiry = 3600 * 24; // one day
-    let source = "lndhub".to_owned();
+    let source = invoice::Source::Lndhub;
     let invoice = state
         .service
         .create_invoice(
@@ -322,7 +322,7 @@ pub async fn pay_invoice(
             &user.user,
             data.invoice.clone(),
             &state.setting.fee,
-            "lndhub".to_string(),
+            invoice::Source::Lndhub,
             false,
         )
         .await?;
