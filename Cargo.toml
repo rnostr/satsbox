@@ -13,8 +13,8 @@ authors.workspace = true
 
 [dependencies]
 lightning-client = { version = "0.1.0", path = "./lightning" }
-migration = { version = "0.1.0", path = "./migration" }
-entity = { version = "0.1.0", path = "./entity" }
+migration = { version = "0.1.0", package = "satsbox-migration", path = "./migration" }
+entity = { version = "0.1.0", package = "satsbox-entity", path = "./entity" }
 thiserror = "1.0.43"
 sea-orm = { version = "0.12.2", features = [
     "runtime-tokio-rustls",

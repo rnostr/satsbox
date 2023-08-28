@@ -1,8 +1,13 @@
 [package]
-name = "entity"
+name = "satsbox-entity"
 version = "0.1.0"
-edition = "2021"
-publish = false
+description = "Satsbox entity."
+keywords = ["entity"]
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+authors.workspace = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
