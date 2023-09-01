@@ -1,15 +1,15 @@
-use crate::{now, setting::Fee, sha256, Error, Result};
-use entity::{event, invoice, record, user};
+use crate::{key::Pubkey, now, setting::Fee, sha256, Error, Result};
+use entity::{donation, event, invoice, record, user};
 use lightning_client::{lightning, Lightning};
 use nostr_sdk::Event;
 use rand::RngCore;
 use sea_orm::{
-    sea_query::Expr, ActiveModelTrait, ColumnTrait, DatabaseTransaction, DbConn, EntityTrait,
-    NotSet, QueryFilter, QueryOrder, Set, TransactionTrait,
+    sea_query::Expr, ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseTransaction, DbConn,
+    EntityTrait, NotSet, QueryFilter, QueryOrder, Set, TransactionTrait,
 };
-use tokio::time::sleep;
-
+use serde::Deserialize;
 use std::{collections::HashMap, time::Duration};
+use tokio::time::sleep;
 
 pub fn rand_preimage() -> Vec<u8> {
     let mut store_key_bytes = [0u8; 32];
@@ -43,6 +43,7 @@ pub struct Service {
     conn: DbConn,
     name: String,
     pub self_payment: bool,
+    pub donation_receiver: Option<Vec<u8>>,
 }
 
 impl Service {
@@ -52,6 +53,7 @@ impl Service {
             lightning,
             conn,
             self_payment: false,
+            donation_receiver: None,
         }
     }
 
@@ -83,10 +85,7 @@ impl Service {
     }
 
     pub async fn get_user(&self, pubkey: Vec<u8>) -> Result<Option<user::Model>> {
-        Ok(user::Entity::find()
-            .filter(user::Column::Pubkey.eq(pubkey))
-            .one(self.db())
-            .await?)
+        get_user(self.db(), pubkey).await
     }
 
     pub async fn admin_adjust_user_balance(
@@ -147,28 +146,11 @@ impl Service {
     }
 
     pub async fn get_or_create_user(&self, pubkey: Vec<u8>) -> Result<user::Model> {
-        match self.get_user(pubkey.clone()).await? {
-            Some(u) => Ok(u),
-            None => self.create_user(pubkey.clone()).await,
-        }
+        get_or_create_user(self.db(), pubkey).await
     }
 
     pub async fn create_user(&self, pubkey: Vec<u8>) -> Result<user::Model> {
-        let now = now() as i64;
-        // create
-        Ok(user::ActiveModel {
-            pubkey: Set(pubkey),
-            id: NotSet,
-            balance: NotSet,
-            lock_amount: NotSet,
-            username: NotSet,
-            password: NotSet,
-            donate_amount: NotSet,
-            created_at: Set(now),
-            updated_at: Set(now),
-        }
-        .insert(self.db())
-        .await?)
+        create_user(self.db(), pubkey).await
     }
 
     pub async fn get_invoice(&self, id: i32) -> Result<Option<invoice::Model>> {
@@ -215,16 +197,7 @@ impl Service {
         }
         if info.id.eq(&inv.payee) {
             // internal payment
-            internal_pay(
-                &self.conn,
-                user,
-                inv,
-                fee,
-                self.name.clone(),
-                self.self_payment,
-                source,
-            )
-            .await
+            self.internal_pay(user, inv, fee, source).await
         } else {
             // external payment
             let payment_hash = inv.payment_hash.clone();
@@ -328,6 +301,141 @@ impl Service {
         }
     }
 
+    async fn internal_pay(
+        &self,
+        user: &user::Model,
+        inv: lightning::Invoice,
+        fee: &Fee,
+        source: invoice::Source,
+    ) -> Result<invoice::Model> {
+        let payment_hash = inv.payment_hash.clone();
+        let amount = inv.amount as i64;
+        let (fee, service_fee) = fee.cal(amount, true);
+        let total = amount + fee + service_fee;
+        if user.balance < total {
+            return Err(Error::Str("The balance is insufficient."));
+        }
+
+        let payee_inv = invoice::Entity::find()
+            .filter(invoice::Column::PaymentHash.eq(payment_hash.clone()))
+            .filter(invoice::Column::Type.eq(invoice::Type::Invoice))
+            .one(self.db())
+            .await?
+            .ok_or(Error::InvalidPayment("Can't find payee invoice".to_owned()))?;
+
+        if !self.self_payment && payee_inv.user_id == user.id {
+            return Err(Error::InvalidPayment(
+                "Not allowed to pay yourself.".to_owned(),
+            ));
+        }
+
+        let payee_user = get_user_by_id(self.db(), payee_inv.user_id).await?;
+
+        if payee_inv.status != invoice::Status::Unpaid {
+            return Err(Error::InvalidPayment("The invoice is closed.".to_owned()));
+        }
+
+        let time = now() as i64;
+        let mut payment_model = create_invoice_active_model(
+            user,
+            payee_inv.payment_preimage.clone(),
+            inv,
+            self.name().clone(),
+            InvoiceExtra::new(source),
+        );
+        // payment
+        payment_model.r#type = Set(invoice::Type::Payment);
+        payment_model.lock_amount = Set(0);
+        payment_model.status = Set(invoice::Status::Paid);
+        payment_model.amount = Set(amount);
+        payment_model.paid_amount = Set(amount);
+        payment_model.fee = Set(fee);
+        payment_model.total = Set(total);
+        payment_model.paid_at = Set(time);
+        payment_model.service_fee = Set(service_fee);
+        payment_model.internal = Set(true);
+
+        let payee_update = invoice::ActiveModel {
+            status: Set(invoice::Status::Paid),
+            amount: Set(amount),
+            paid_amount: Set(amount),
+            paid_at: Set(time),
+            internal: Set(true),
+            ..Default::default()
+        };
+
+        // exec pay
+        let txn = self.db().begin().await?;
+        // update payee invoice status
+        let res = invoice::Entity::update_many()
+            .set(payee_update)
+            .filter(invoice::Column::Id.eq(payee_inv.id))
+            .filter(invoice::Column::Status.eq(invoice::Status::Unpaid))
+            .exec(&txn)
+            .await?;
+        if res.rows_affected != 1 {
+            return Err(Error::InvalidPayment(
+                "Update invoice failed, It's probably already been paid.".to_owned(),
+            ));
+        }
+
+        let payment = payment_model.insert(&txn).await?;
+
+        // Decrease payer balances
+        let res = user::Entity::update_many()
+            .col_expr(
+                user::Column::Balance,
+                Expr::col(user::Column::Balance).sub(total),
+            )
+            .filter(user::Column::Id.eq(user.id))
+            .filter(user::Column::Balance.gte(total))
+            .exec(&txn)
+            .await?;
+        if res.rows_affected != 1 {
+            return Err(Error::Str("The balance is insufficient or locked."));
+        }
+
+        // record user balance change
+        new_record(
+            user,
+            Some(payment.id),
+            -total,
+            "internal_payment".to_owned(),
+            None,
+        )
+        .insert(&txn)
+        .await?;
+
+        // Increase payee balance
+        let res = user::Entity::update_many()
+            .col_expr(
+                user::Column::Balance,
+                Expr::col(user::Column::Balance).add(amount),
+            )
+            .filter(user::Column::Id.eq(payee_inv.user_id))
+            .exec(&txn)
+            .await?;
+        if res.rows_affected != 1 {
+            return Err(Error::Str("unknown error. where is the user?"));
+        }
+
+        new_record(
+            &payee_user,
+            Some(payee_inv.id),
+            amount,
+            "internal_payment".to_owned(),
+            None,
+        )
+        .insert(&txn)
+        .await?;
+
+        sync_donation(self, Some(user.pubkey.clone()), &txn, &payee_inv).await?;
+
+        txn.commit().await?;
+
+        Ok(payment)
+    }
+
     pub async fn sync(&self, duration: Duration, invoice_expiry: Duration) -> Result<()> {
         let seconds = invoice_expiry.as_secs();
         tracing::info!("start task for sync invoices and payments");
@@ -370,7 +478,7 @@ impl Service {
                                 // updated paid
                                 updated += 1;
                                 // todo: log error
-                                let _r = invoice_paid(self.db(), invoice, remote).await;
+                                let _r = invoice_paid(self, invoice, remote).await;
                             }
 
                             lightning::InvoiceStatus::Canceled => {
@@ -519,6 +627,38 @@ impl Service {
     }
 }
 
+async fn get_or_create_user<C: ConnectionTrait>(conn: &C, pubkey: Vec<u8>) -> Result<user::Model> {
+    match get_user(conn, pubkey.clone()).await? {
+        Some(u) => Ok(u),
+        None => create_user(conn, pubkey.clone()).await,
+    }
+}
+
+async fn get_user<C: ConnectionTrait>(conn: &C, pubkey: Vec<u8>) -> Result<Option<user::Model>> {
+    Ok(user::Entity::find()
+        .filter(user::Column::Pubkey.eq(pubkey))
+        .one(conn)
+        .await?)
+}
+
+async fn create_user<C: ConnectionTrait>(conn: &C, pubkey: Vec<u8>) -> Result<user::Model> {
+    let now = now() as i64;
+    // create ConnectionTrait
+    Ok(user::ActiveModel {
+        pubkey: Set(pubkey),
+        id: NotSet,
+        balance: NotSet,
+        lock_amount: NotSet,
+        username: NotSet,
+        password: NotSet,
+        donate_amount: NotSet,
+        created_at: Set(now),
+        updated_at: Set(now),
+    }
+    .insert(conn)
+    .await?)
+}
+
 async fn invoice_dup_paid(
     conn: &DbConn,
     invoice: &invoice::Model,
@@ -577,10 +717,11 @@ async fn invoice_dup_paid(
 }
 
 async fn invoice_paid(
-    conn: &DbConn,
+    service: &Service,
     invoice: &invoice::Model,
     remote: &lightning::Invoice,
 ) -> Result<()> {
+    let conn = service.db();
     let amount = remote.paid_amount as i64;
 
     let user = get_user_by_id(conn, invoice.user_id).await?;
@@ -630,151 +771,79 @@ async fn invoice_paid(
     .insert(&txn)
     .await?;
 
-    sync_donation(&txn, invoice).await?;
+    sync_donation(service, None, &txn, invoice).await?;
 
     txn.commit().await?;
     Ok(())
 }
 
-async fn sync_donation(_txn: &DatabaseTransaction, _invoice: &invoice::Model) -> Result<()> {
-    Ok(())
+#[derive(Deserialize)]
+struct _PayerData {
+    pub pubkey: Pubkey,
 }
 
-async fn internal_pay(
-    conn: &DbConn,
-    user: &user::Model,
-    inv: lightning::Invoice,
-    fee: &Fee,
-    service: String,
-    self_payment: bool,
-    source: invoice::Source,
-) -> Result<invoice::Model> {
-    let payment_hash = inv.payment_hash.clone();
-    let amount = inv.amount as i64;
-    let (fee, service_fee) = fee.cal(amount, true);
-    let total = amount + fee + service_fee;
-    if user.balance < total {
-        return Err(Error::Str("The balance is insufficient."));
+#[derive(Deserialize)]
+struct _Event {
+    pub pubkey: Pubkey,
+}
+
+// Get donation user from payer pubkey, internal user, zap
+async fn sync_donation(
+    service: &Service,
+    user: Option<Vec<u8>>,
+    txn: &DatabaseTransaction,
+    invoice: &invoice::Model,
+) -> Result<bool> {
+    if Some(&invoice.user_pubkey) == service.donation_receiver.as_ref() {
+        let mut pubkey = None;
+        // try get user from payer data
+        if let Some(data) = &invoice.payer_data {
+            if let Ok(data) = serde_json::from_str::<_PayerData>(data) {
+                pubkey = Some(data.pubkey.serialize().to_vec());
+            }
+        }
+
+        // try get user from zap
+        if pubkey.is_none() && invoice.zap {
+            if let Ok(data) = serde_json::from_str::<_Event>(&invoice.description) {
+                pubkey = Some(data.pubkey.serialize().to_vec());
+            }
+        }
+
+        // internal user
+        if pubkey.is_none() {
+            pubkey = user;
+        }
+        if let Some(pubkey) = pubkey {
+            let user = get_or_create_user(txn, pubkey.clone()).await?;
+            let now = now() as i64;
+            donation::ActiveModel {
+                id: NotSet,
+                user_id: Set(user.id),
+                invoice_id: Set(invoice.id),
+                status: Set(donation::Status::Paid),
+                amount: Set(invoice.paid_amount),
+                paid_at: Set(now),
+                message: NotSet,
+                created_at: Set(now),
+                updated_at: Set(now),
+            }
+            .insert(txn)
+            .await?;
+            // update user donate amount
+            user::Entity::update_many()
+                .col_expr(user::Column::UpdatedAt, Expr::value(now))
+                .col_expr(
+                    user::Column::DonateAmount,
+                    Expr::col(user::Column::DonateAmount).add(invoice.paid_amount),
+                )
+                .filter(user::Column::Id.eq(user.id))
+                .exec(txn)
+                .await?;
+            return Ok(true);
+        }
     }
-
-    let payee_inv = invoice::Entity::find()
-        .filter(invoice::Column::PaymentHash.eq(payment_hash.clone()))
-        .filter(invoice::Column::Type.eq(invoice::Type::Invoice))
-        .one(conn)
-        .await?
-        .ok_or(Error::InvalidPayment("Can't find payee invoice".to_owned()))?;
-
-    if !self_payment && payee_inv.user_id == user.id {
-        return Err(Error::InvalidPayment(
-            "Not allowed to pay yourself.".to_owned(),
-        ));
-    }
-
-    let payee_user = get_user_by_id(conn, payee_inv.user_id).await?;
-
-    if payee_inv.status != invoice::Status::Unpaid {
-        return Err(Error::InvalidPayment("The invoice is closed.".to_owned()));
-    }
-
-    let time = now() as i64;
-    let mut payment_model = create_invoice_active_model(
-        user,
-        payee_inv.payment_preimage.clone(),
-        inv,
-        service,
-        InvoiceExtra::new(source),
-    );
-    // payment
-    payment_model.r#type = Set(invoice::Type::Payment);
-    payment_model.lock_amount = Set(0);
-    payment_model.status = Set(invoice::Status::Paid);
-    payment_model.amount = Set(amount);
-    payment_model.paid_amount = Set(amount);
-    payment_model.fee = Set(fee);
-    payment_model.total = Set(total);
-    payment_model.paid_at = Set(time);
-    payment_model.service_fee = Set(service_fee);
-    payment_model.internal = Set(true);
-
-    let payee_update = invoice::ActiveModel {
-        status: Set(invoice::Status::Paid),
-        amount: Set(amount),
-        paid_amount: Set(amount),
-        paid_at: Set(time),
-        internal: Set(true),
-        ..Default::default()
-    };
-
-    // exec pay
-    let txn = conn.begin().await?;
-    // update payee invoice status
-    let res = invoice::Entity::update_many()
-        .set(payee_update)
-        .filter(invoice::Column::Id.eq(payee_inv.id))
-        .filter(invoice::Column::Status.eq(invoice::Status::Unpaid))
-        .exec(&txn)
-        .await?;
-    if res.rows_affected != 1 {
-        return Err(Error::InvalidPayment(
-            "Update invoice failed, It's probably already been paid.".to_owned(),
-        ));
-    }
-
-    let payment = payment_model.insert(&txn).await?;
-
-    // Decrease payer balances
-    let res = user::Entity::update_many()
-        .col_expr(
-            user::Column::Balance,
-            Expr::col(user::Column::Balance).sub(total),
-        )
-        .filter(user::Column::Id.eq(user.id))
-        .filter(user::Column::Balance.gte(total))
-        .exec(&txn)
-        .await?;
-    if res.rows_affected != 1 {
-        return Err(Error::Str("The balance is insufficient or locked."));
-    }
-
-    // record user balance change
-    new_record(
-        user,
-        Some(payment.id),
-        -total,
-        "internal_payment".to_owned(),
-        None,
-    )
-    .insert(&txn)
-    .await?;
-
-    // Increase payee balance
-    let res = user::Entity::update_many()
-        .col_expr(
-            user::Column::Balance,
-            Expr::col(user::Column::Balance).add(amount),
-        )
-        .filter(user::Column::Id.eq(payee_inv.user_id))
-        .exec(&txn)
-        .await?;
-    if res.rows_affected != 1 {
-        return Err(Error::Str("unknown error. where is the user?"));
-    }
-
-    new_record(
-        &payee_user,
-        Some(payee_inv.id),
-        amount,
-        "internal_payment".to_owned(),
-        None,
-    )
-    .insert(&txn)
-    .await?;
-
-    sync_donation(&txn, &payee_inv).await?;
-
-    txn.commit().await?;
-
-    Ok(payment)
+    Ok(false)
 }
 
 async fn pay_failed(conn: &DbConn, model: &invoice::Model) -> Result<()> {

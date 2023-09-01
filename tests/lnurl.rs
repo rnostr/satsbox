@@ -3,15 +3,15 @@ use actix_web::{test::init_service, web};
 use anyhow::Result;
 use lightning_client::{lightning::Invoice, sha256};
 use nostr_sdk::{
-    secp256k1::{SecretKey, XOnlyPublicKey},
-    Client, Event, EventBuilder, EventId, Filter, Keys, Kind, Options, RelayPoolNotification, Tag,
+    secp256k1::XOnlyPublicKey, Client, Event, EventBuilder, EventId, Filter, Keys, Kind, Options,
+    RelayPoolNotification, Tag,
 };
-use satsbox::{create_web_app, lnurl::handle_receipts};
+use satsbox::{create_web_app, lnurl::handle_receipts, now};
 use serde_json::json;
-use std::{str::FromStr, time::Duration};
+use std::time::Duration;
 use tokio::time::timeout;
 use url::form_urlencoded::byte_serialize;
-use util::create_test_state;
+use util::{create_test_state, create_test_state2};
 
 mod util;
 
@@ -150,22 +150,27 @@ async fn zaps() -> Result<()> {
 
     let mut state = create_test_state().await?;
     state.service.self_payment = true;
+    let admin_keys = Keys::generate();
+    state.setting.donation.privkey = Some(admin_keys.secret_key()?.into());
+    state.service.donation_receiver = Some(admin_keys.public_key().serialize().to_vec());
+    state.setting.lnurl.privkey = Some(admin_keys.secret_key()?.into());
 
-    state.setting.lnurl.privkey = Some(
-        SecretKey::from_str("6b911fd37cdf5c81d4c0adb1ab7fa822ed253ab0ad9aa18d77257c88b29b0000")?
-            .into(),
-    );
     let state = web::Data::new(state);
 
     let server_keys = Keys::new(state.setting.lnurl.privkey.unwrap().into());
 
-    let user = state
+    let admin = state
         .service
-        .get_or_create_user(user_keys.public_key().serialize().to_vec())
+        .get_or_create_user(admin_keys.public_key().serialize().to_vec())
         .await?;
     state
         .service
-        .update_user_name(user.id, Some("admin".to_owned()))
+        .update_user_name(admin.id, Some("admin".to_owned()))
+        .await?;
+
+    let user = state
+        .service
+        .get_or_create_user(user_keys.public_key().serialize().to_vec())
         .await?;
     let user = state
         .service
@@ -239,6 +244,12 @@ async fn zaps() -> Result<()> {
             false,
         )
         .await?;
+
+    let user = state
+        .service
+        .get_or_create_user(user_keys.public_key().serialize().to_vec())
+        .await?;
+    assert_eq!(user.donate_amount, amount as i64);
 
     let count = handle_receipts(&state).await?;
     assert_eq!(count, 1);
@@ -347,4 +358,132 @@ where
         }
     }
     Err(satsbox::Error::Str("?"))
+}
+
+#[actix_rt::test]
+async fn donate_by_lud18() -> Result<()> {
+    let payer_state = create_test_state2(Some(satsbox::setting::Lightning::Cln)).await?;
+    let mut state = create_test_state2(Some(satsbox::setting::Lightning::Lnd)).await?;
+    let donation_keys = Keys::generate();
+    state.setting.donation.privkey = Some(donation_keys.secret_key()?.into());
+    state.service.donation_receiver = Some(donation_keys.public_key().serialize().to_vec());
+
+    let donation_receiver_pubkey = donation_keys.public_key().serialize().to_vec();
+    let donation_receiver = state
+        .service
+        .get_or_create_user(donation_receiver_pubkey.clone())
+        .await?;
+    state
+        .service
+        .update_user_name(donation_receiver.id, Some("donation".to_owned()))
+        .await?;
+
+    let payer_pubkey =
+        hex::decode("4f197a5c455b0998026380e5f492b4915ae93c4317050ac8948d9293d1e8cd20")?;
+    let payer = state
+        .service
+        .get_or_create_user(payer_pubkey.clone())
+        .await?;
+
+    let payer = state
+        .service
+        .admin_adjust_user_balance(&payer, 1_000_000, None)
+        .await?;
+
+    let state = web::Data::new(state);
+    let app = init_service(create_web_app(state.clone())).await;
+    sleep(Duration::from_millis(50)).await;
+
+    let (val, _) = util::get(&app, "/.well-known/lnurlp/donation").await?;
+    assert_eq!(val["tag"], json!("payRequest"));
+    assert_eq!(val["status"], json!("OK"));
+
+    // let metadata = val["metadata"].as_str().unwrap();
+    let callback = val["callback"].as_str().unwrap();
+    let donor_pubkey =
+        hex::decode("4f197a5c455b0998026380e5f492b4915ae93c4317050ac8948d9293d1e8cd21")?;
+    let payerdata = serde_json::to_string(&json!({
+        "name": "tester",
+        "pubkey": hex::encode(&donor_pubkey),
+    }))?;
+    let amount = 10_000;
+
+    let (val, _) = util::get(
+        &app,
+        &format!(
+            "{}?amount={}&payerdata={}", // ignore nostr zaps
+            callback,
+            amount, // 10 sats
+            url_encode(&payerdata),
+        ),
+    )
+    .await?;
+
+    assert_eq!(val["status"], json!("OK"));
+    let pr = val["pr"].as_str().unwrap();
+
+    // internal payment
+    state
+        .service
+        .pay(
+            &payer,
+            pr.to_owned(),
+            &state.setting.fee,
+            entity::invoice::Source::Test,
+            false,
+        )
+        .await?;
+
+    let donor = state
+        .service
+        .get_or_create_user(donor_pubkey.clone())
+        .await?;
+
+    assert_eq!(donor.donate_amount, amount);
+
+    // external payment
+    let (val, _) = util::get(
+        &app,
+        &format!(
+            "{}?amount={}&payerdata={}", // ignore nostr zaps
+            callback,
+            amount, // 10 sats
+            url_encode(&payerdata),
+        ),
+    )
+    .await?;
+
+    assert_eq!(val["status"], json!("OK"));
+    let pr = val["pr"].as_str().unwrap();
+
+    let payer_service = &payer_state.service;
+    let payer_pubkey =
+        hex::decode("000003a91077fc049b8371e7a523fb5dfd9daff4522aa3f510d02bc9f490ca36")?;
+    let payer_user = payer_service
+        .get_or_create_user(payer_pubkey.clone())
+        .await?;
+    let balance = 5_000_000;
+    let payer_user = payer_service
+        .admin_adjust_user_balance(&payer_user, balance, None)
+        .await?;
+    payer_service
+        .pay(
+            &payer_user,
+            pr.to_owned(),
+            &state.setting.fee,
+            entity::invoice::Source::Test,
+            false,
+        )
+        .await?;
+    sleep(Duration::from_secs(1)).await;
+    let count = state.service.sync_invoices(now() - 60).await?;
+    assert_eq!(count, 1);
+
+    let donor = state
+        .service
+        .get_or_create_user(donor_pubkey.clone())
+        .await?;
+
+    assert_eq!(donor.donate_amount, amount * 2);
+    Ok(())
 }

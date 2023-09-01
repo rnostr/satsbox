@@ -36,10 +36,21 @@ impl MigrationTrait for Migration {
                             .default(0),
                     )
                     .col(
+                        ColumnDef::new(donation::Column::Status)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(
                         ColumnDef::new(donation::Column::Message)
                             .text()
                             .not_null()
                             .default("".to_owned()),
+                    )
+                    .col(
+                        ColumnDef::new(donation::Column::PaidAt)
+                            .big_integer()
+                            .not_null(),
                     )
                     .col(
                         ColumnDef::new(donation::Column::CreatedAt)
@@ -58,7 +69,7 @@ impl MigrationTrait for Migration {
             .create_index(
                 Index::create()
                     .if_not_exists()
-                    .name("uq_vip_payment_invoice_id")
+                    .name("uq_donation_invoice_id")
                     .col(donation::Column::InvoiceId)
                     .table(donation::Entity)
                     .unique()
@@ -70,7 +81,7 @@ impl MigrationTrait for Migration {
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager
-            .drop_index(Index::drop().name("uq_vip_payment_invoice_id").to_owned())
+            .drop_index(Index::drop().name("uq_donation_invoice_id").to_owned())
             .await?;
         manager
             .drop_table(Table::drop().table(donation::Entity).to_owned())

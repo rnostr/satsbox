@@ -2,25 +2,16 @@
 
 use anyhow::Result;
 use entity::invoice;
-use migration::{Migrator, MigratorTrait};
 use satsbox::{
     now,
-    setting::{Fee, Lightning, Setting},
-    AppState, InvoiceExtra,
+    setting::{Fee, Lightning},
+    InvoiceExtra,
 };
 use std::time::Duration;
 use tokio::time::sleep;
+use util::create_test_state2;
 
-async fn create_test_state(lightning: Option<Lightning>) -> Result<AppState> {
-    dotenvy::from_filename(".test.env")?;
-    let mut setting = Setting::from_env("SATSBOX".to_owned())?;
-    if let Some(lightning) = lightning {
-        setting.lightning = lightning;
-    }
-    let state = AppState::from_setting(setting).await?;
-    Migrator::fresh(state.service.db()).await?;
-    Ok(state)
-}
+mod util;
 
 // async fn fresh_db(state: &AppState) -> Result<()> {
 //     Migrator::fresh(state.service.conn()).await?;
@@ -29,7 +20,7 @@ async fn create_test_state(lightning: Option<Lightning>) -> Result<AppState> {
 
 #[tokio::test]
 async fn info() -> Result<()> {
-    let state = create_test_state(None).await?;
+    let state = create_test_state2(None).await?;
     let info = state.service.info().await?;
     assert_eq!(info.id.len(), 33);
     Ok(())
@@ -45,7 +36,7 @@ async fn create_invoice() -> Result<()> {
     let msats = 2_000_000_000_000;
 
     let source = entity::invoice::Source::Test;
-    let state = create_test_state(None).await?;
+    let state = create_test_state2(None).await?;
 
     let service = &state.service;
     let user = service.get_or_create_user(pubkey.clone()).await?;
@@ -79,7 +70,7 @@ async fn internal_payment() -> Result<()> {
     let msats: i64 = 2_000_000;
 
     let source = entity::invoice::Source::Test;
-    let state = create_test_state(None).await?;
+    let state = create_test_state2(None).await?;
 
     let service = &state.service;
     let payee_user = service.get_or_create_user(payee_pubkey.clone()).await?;
@@ -199,7 +190,7 @@ async fn self_payment() -> Result<()> {
     let msats: i64 = 2_000_000;
 
     let source = entity::invoice::Source::Test;
-    let mut state = create_test_state(None).await?;
+    let mut state = create_test_state2(None).await?;
     state.service.self_payment = true;
 
     let service = &state.service;
@@ -305,9 +296,9 @@ async fn pay(payer: Lightning, payee: Lightning, test_sync: bool) -> Result<()> 
     let msats: i64 = 2_000_000;
 
     let source = entity::invoice::Source::Test;
-    // create_test_state will refresh db
-    let payee_state = create_test_state(Some(payee)).await?;
-    let payer_state = create_test_state(Some(payer)).await?;
+    // create_test_state2 will refresh db
+    let payee_state = create_test_state2(Some(payee)).await?;
+    let payer_state = create_test_state2(Some(payer)).await?;
 
     let payee_service = &payee_state.service;
     let payee_user = payee_service
@@ -444,8 +435,8 @@ async fn duplicate_payment() -> Result<()> {
     let msats: i64 = 2_000_000;
 
     let source = entity::invoice::Source::Test;
-    let state = create_test_state(Some(Lightning::Cln)).await?;
-    let payer_state = create_test_state(Some(Lightning::Lnd)).await?;
+    let state = create_test_state2(Some(Lightning::Cln)).await?;
+    let payer_state = create_test_state2(Some(Lightning::Lnd)).await?;
 
     let service = &state.service;
     let payee_user = service.get_or_create_user(payee_pubkey.clone()).await?;

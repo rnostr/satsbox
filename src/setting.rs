@@ -216,7 +216,7 @@ pub struct Lnurl {
     pub min_sendable: u64,
     pub max_sendable: u64,
     pub comment_allowed: usize,
-    /// nostr private key for send zap receipt, don't support nostr if not set.
+    /// nostr private key for send nostr zap receipt, keep not set if nostr zaps is not supported.
     pub privkey: Option<Privkey>,
 
     /// extra nostr relay server for sending zap receipt
@@ -235,6 +235,19 @@ impl Default for Lnurl {
             relays: vec![],
             proxy: None,
         }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(default)]
+pub struct Donation {
+    /// nostr private key for mark donors
+    pub privkey: Option<Privkey>,
+}
+
+impl Default for Donation {
+    fn default() -> Self {
+        Self { privkey: None }
     }
 }
 
@@ -262,6 +275,7 @@ pub struct Setting {
     pub auth: Auth,
     pub nwc: Nwc,
     pub lnurl: Lnurl,
+    pub donation: Donation,
 
     /// flatten extensions setting to json::Value
     #[serde(flatten)]
@@ -297,6 +311,7 @@ impl Default for Setting {
             auth: Default::default(),
             nwc: Default::default(),
             lnurl: Default::default(),
+            donation: Default::default(),
         }
     }
 }

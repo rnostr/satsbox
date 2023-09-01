@@ -1,5 +1,12 @@
 use sea_orm::entity::prelude::*;
 
+#[derive(EnumIter, DeriveActiveEnum, Debug, Clone, PartialEq, Eq)]
+#[sea_orm(rs_type = "i32", db_type = "Integer")]
+pub enum Status {
+    Created = 0,
+    Paid = 1,
+}
+
 /// donations
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq)]
@@ -12,7 +19,11 @@ pub struct Model {
 
     pub invoice_id: i32,
 
+    pub status: Status,
+
     pub amount: i64,
+
+    pub paid_at: i64,
 
     #[sea_orm(column_type = "Text")]
     pub message: String,

@@ -10,12 +10,26 @@ use actix_web::{
 };
 use anyhow::Result;
 use migration::{Migrator, MigratorTrait};
-use satsbox::AppState;
+use satsbox::{
+    setting::{Lightning, Setting},
+    AppState,
+};
 use serde_json::Value;
 
 pub async fn create_test_state() -> Result<AppState> {
     dotenvy::from_filename(".test.env")?;
     let state = AppState::create(None::<String>, Some("SATSBOX".to_owned())).await?;
+    Migrator::fresh(state.service.db()).await?;
+    Ok(state)
+}
+
+pub async fn create_test_state2(lightning: Option<Lightning>) -> Result<AppState> {
+    dotenvy::from_filename(".test.env")?;
+    let mut setting = Setting::from_env("SATSBOX".to_owned())?;
+    if let Some(lightning) = lightning {
+        setting.lightning = lightning;
+    }
+    let state = AppState::from_setting(setting).await?;
     Migrator::fresh(state.service.db()).await?;
     Ok(state)
 }

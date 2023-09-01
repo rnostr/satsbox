@@ -13,6 +13,7 @@ use actix_web::{
     middleware, web, App as WebApp, HttpServer,
 };
 use lightning_client::{Cln, Lightning, Lnd};
+use nostr_sdk::Keys;
 use sea_orm::{ConnectOptions, Database};
 use std::{path::Path, sync::Arc, time::Duration};
 use tracing::info;
@@ -77,7 +78,12 @@ impl AppState {
         let mut options = ConnectOptions::from(&setting.db_url);
         options.sqlx_logging_level(tracing::log::LevelFilter::Trace);
         let conn = Database::connect(options).await?;
-        let service = Service::new(conf.0, conf.1, conn);
+        let mut service = Service::new(conf.0, conf.1, conn);
+        // set donation receiver
+        if let Some(prikey) = &setting.donation.privkey {
+            let keys = Keys::new(prikey.clone().into());
+            service.donation_receiver = Some(keys.public_key().serialize().to_vec());
+        }
 
         Ok(Self { service, setting })
     }
