@@ -777,14 +777,37 @@ async fn invoice_paid(
     Ok(())
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 struct _PayerData {
     pub pubkey: Pubkey,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 struct _Event {
     pub pubkey: Pubkey,
+}
+
+fn parse_donation_user(
+    payer_data: Option<&String>,
+    zap: bool,
+    description: &String,
+) -> Option<Vec<u8>> {
+    let mut pubkey = None;
+
+    // try get user from payer data
+    if let Some(data) = payer_data {
+        if let Ok(data) = serde_json::from_str::<_PayerData>(data) {
+            pubkey = Some(data.pubkey.serialize().to_vec());
+        }
+    }
+
+    // try get user from zap
+    if pubkey.is_none() && zap {
+        if let Ok(data) = serde_json::from_str::<_Event>(description) {
+            pubkey = Some(data.pubkey.serialize().to_vec());
+        }
+    }
+    pubkey
 }
 
 // Get donation user from payer pubkey, internal user, zap
@@ -795,21 +818,11 @@ async fn sync_donation(
     invoice: &invoice::Model,
 ) -> Result<bool> {
     if Some(&invoice.user_pubkey) == service.donation_receiver.as_ref() {
-        let mut pubkey = None;
-        // try get user from payer data
-        if let Some(data) = &invoice.payer_data {
-            if let Ok(data) = serde_json::from_str::<_PayerData>(data) {
-                pubkey = Some(data.pubkey.serialize().to_vec());
-            }
-        }
-
-        // try get user from zap
-        if pubkey.is_none() && invoice.zap {
-            if let Ok(data) = serde_json::from_str::<_Event>(&invoice.description) {
-                pubkey = Some(data.pubkey.serialize().to_vec());
-            }
-        }
-
+        let mut pubkey = parse_donation_user(
+            invoice.payer_data.as_ref(),
+            invoice.zap,
+            &invoice.description,
+        );
         // internal user
         if pubkey.is_none() {
             pubkey = user;
@@ -1036,5 +1049,70 @@ fn create_invoice_active_model(
         zap: Set(extra.zap),
         zap_status: NotSet,
         zap_receipt: Set(extra.zap_receipt),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn donation_user() {
+        let pubkey = parse_donation_user(Some(&"".to_owned()), false, &"".to_owned());
+        assert!(pubkey.is_none());
+
+        let pubkey = parse_donation_user(
+            Some(
+                &r#"{
+                    "pubkey": "4f197a5c455b0998026380e5f492b4915ae93c4317050ac8948d9293d1e8cd20"
+                }"#
+                .to_owned(),
+            ),
+            false,
+            &"".to_owned(),
+        );
+        assert_eq!(
+            pubkey,
+            Some(
+                hex::decode("4f197a5c455b0998026380e5f492b4915ae93c4317050ac8948d9293d1e8cd20")
+                    .unwrap()
+            )
+        );
+
+        let pubkey = parse_donation_user(
+            Some(
+                &r#"{
+                    "name": "test",
+                    "pubkey": "npub1fuvh5hz9tvyesqnrsrjlfy45j9dwj0zrzuzs4jy53kff850ge5sq6te9w6"
+                }"#
+                .to_owned(),
+            ),
+            false,
+            &"".to_owned(),
+        );
+        assert_eq!(
+            pubkey,
+            Some(
+                hex::decode("4f197a5c455b0998026380e5f492b4915ae93c4317050ac8948d9293d1e8cd20")
+                    .unwrap()
+            )
+        );
+
+        let pubkey = parse_donation_user(
+            None,
+            true,
+            &r#"{
+                "id": "test",
+                "pubkey": "npub1fuvh5hz9tvyesqnrsrjlfy45j9dwj0zrzuzs4jy53kff850ge5sq6te9w6"
+            }"#
+            .to_owned(),
+        );
+        assert_eq!(
+            pubkey,
+            Some(
+                hex::decode("4f197a5c455b0998026380e5f492b4915ae93c4317050ac8948d9293d1e8cd20")
+                    .unwrap()
+            )
+        );
     }
 }
