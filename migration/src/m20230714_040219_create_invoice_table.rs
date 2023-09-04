@@ -145,7 +145,14 @@ impl MigrationTrait for Migration {
                             .not_null(),
                     )
                     .col(ColumnDef::new(invoice::Column::Comment).text().null())
-                    .col(ColumnDef::new(invoice::Column::PayerData).text().null())
+                    .col(ColumnDef::new(invoice::Column::Payer).text().null())
+                    .col(ColumnDef::new(invoice::Column::PayerName).string().null())
+                    .col(ColumnDef::new(invoice::Column::PayerEmail).string().null())
+                    .col(
+                        ColumnDef::new(invoice::Column::PayerPubkey)
+                            .binary_len(32)
+                            .null(),
+                    )
                     .col(
                         ColumnDef::new(invoice::Column::Zap)
                             .boolean()
@@ -157,6 +164,21 @@ impl MigrationTrait for Migration {
                             .integer()
                             .not_null()
                             .default(0),
+                    )
+                    .col(
+                        ColumnDef::new(invoice::Column::ZapFrom)
+                            .binary_len(32)
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(invoice::Column::ZapPubkey)
+                            .binary_len(32)
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(invoice::Column::ZapEvent)
+                            .binary_len(32)
+                            .null(),
                     )
                     .col(ColumnDef::new(invoice::Column::ZapReceipt).text().null())
                     .to_owned(),

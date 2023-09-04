@@ -257,7 +257,7 @@ impl Nwc {
         };
 
         for url in &self.state.setting.nwc.relays {
-            self.client.add_relay(url, proxy).await?;
+            self.client.add_relay(url.as_str(), proxy).await?;
         }
         self.client.connect().await;
 
@@ -294,7 +294,7 @@ impl Nwc {
                             res
                         });
                 }
-                Ok(())
+                Ok(false)
             })
             .await?;
         Ok(())

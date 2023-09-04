@@ -1,7 +1,7 @@
 use crate::{key::Pubkey, now, setting::Fee, sha256, Error, Result};
 use entity::{donation, event, invoice, record, user};
 use lightning_client::{lightning, Lightning};
-use nostr_sdk::Event;
+use nostr_sdk::{secp256k1::XOnlyPublicKey, Event, EventId};
 use rand::RngCore;
 use sea_orm::{
     sea_query::Expr, ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseTransaction, DbConn,
@@ -17,13 +17,29 @@ pub fn rand_preimage() -> Vec<u8> {
     store_key_bytes.to_vec()
 }
 
+#[derive(Deserialize, Debug, Default)]
+pub struct InvoicePayer {
+    pub name: Option<String>,
+    pub email: Option<String>,
+    pub pubkey: Option<Pubkey>,
+}
+
+#[derive(Deserialize, Debug, Default)]
+pub struct InvoiceZap {
+    pub from: Option<XOnlyPublicKey>,
+    // zap to user pubkey (tag p)
+    pub pubkey: Option<XOnlyPublicKey>,
+    // zap to event id (tag e)
+    pub event: Option<EventId>,
+}
+
 #[derive(Default)]
 pub struct InvoiceExtra {
     pub source: invoice::Source,
     pub comment: Option<String>,
-    pub zap: bool,
-    pub zap_receipt: Option<String>,
+    pub zap: Option<InvoiceZap>,
     pub payer_data: Option<String>,
+    pub payer: Option<InvoicePayer>,
 }
 
 impl InvoiceExtra {
@@ -777,39 +793,6 @@ async fn invoice_paid(
     Ok(())
 }
 
-#[derive(Deserialize, Debug)]
-struct _PayerData {
-    pub pubkey: Pubkey,
-}
-
-#[derive(Deserialize, Debug)]
-struct _Event {
-    pub pubkey: Pubkey,
-}
-
-fn parse_donation_user(
-    payer_data: Option<&String>,
-    zap: bool,
-    description: &String,
-) -> Option<Vec<u8>> {
-    let mut pubkey = None;
-
-    // try get user from payer data
-    if let Some(data) = payer_data {
-        if let Ok(data) = serde_json::from_str::<_PayerData>(data) {
-            pubkey = Some(data.pubkey.serialize().to_vec());
-        }
-    }
-
-    // try get user from zap
-    if pubkey.is_none() && zap {
-        if let Ok(data) = serde_json::from_str::<_Event>(description) {
-            pubkey = Some(data.pubkey.serialize().to_vec());
-        }
-    }
-    pubkey
-}
-
 // Get donation user from payer pubkey, internal user, zap
 async fn sync_donation(
     service: &Service,
@@ -818,11 +801,18 @@ async fn sync_donation(
     invoice: &invoice::Model,
 ) -> Result<bool> {
     if Some(&invoice.user_pubkey) == service.donation_receiver.as_ref() {
-        let mut pubkey = parse_donation_user(
-            invoice.payer_data.as_ref(),
-            invoice.zap,
-            &invoice.description,
-        );
+        let mut pubkey = None;
+
+        // try get user from payer data
+        if let Some(data) = &invoice.payer_pubkey {
+            pubkey = Some(data.clone());
+        }
+
+        // try get user from zap
+        if pubkey.is_none() && invoice.zap {
+            pubkey = invoice.zap_from.clone();
+        }
+
         // internal user
         if pubkey.is_none() {
             pubkey = user;
@@ -1017,6 +1007,10 @@ fn create_invoice_active_model(
     extra: InvoiceExtra,
 ) -> invoice::ActiveModel {
     let now = now();
+    let payer = extra.payer.unwrap_or_default();
+    let is_zap = extra.zap.is_some();
+    let zap = extra.zap.unwrap_or_default();
+
     invoice::ActiveModel {
         id: NotSet,
         user_id: Set(user.id),
@@ -1045,74 +1039,15 @@ fn create_invoice_active_model(
         created_at: Set(now as i64),
         updated_at: Set(now as i64),
         comment: Set(extra.comment),
-        payer_data: Set(extra.payer_data),
-        zap: Set(extra.zap),
+        payer: Set(extra.payer_data),
+        payer_name: Set(payer.name),
+        payer_email: Set(payer.email),
+        payer_pubkey: Set(payer.pubkey.map(|k| k.serialize().to_vec())),
+        zap: Set(is_zap),
+        zap_from: Set(zap.from.map(|k| k.serialize().to_vec())),
+        zap_pubkey: Set(zap.pubkey.map(|k| k.serialize().to_vec())),
+        zap_event: Set(zap.event.map(|e| e.as_bytes().to_vec())),
         zap_status: NotSet,
-        zap_receipt: Set(extra.zap_receipt),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn donation_user() {
-        let pubkey = parse_donation_user(Some(&"".to_owned()), false, &"".to_owned());
-        assert!(pubkey.is_none());
-
-        let pubkey = parse_donation_user(
-            Some(
-                &r#"{
-                    "pubkey": "4f197a5c455b0998026380e5f492b4915ae93c4317050ac8948d9293d1e8cd20"
-                }"#
-                .to_owned(),
-            ),
-            false,
-            &"".to_owned(),
-        );
-        assert_eq!(
-            pubkey,
-            Some(
-                hex::decode("4f197a5c455b0998026380e5f492b4915ae93c4317050ac8948d9293d1e8cd20")
-                    .unwrap()
-            )
-        );
-
-        let pubkey = parse_donation_user(
-            Some(
-                &r#"{
-                    "name": "test",
-                    "pubkey": "npub1fuvh5hz9tvyesqnrsrjlfy45j9dwj0zrzuzs4jy53kff850ge5sq6te9w6"
-                }"#
-                .to_owned(),
-            ),
-            false,
-            &"".to_owned(),
-        );
-        assert_eq!(
-            pubkey,
-            Some(
-                hex::decode("4f197a5c455b0998026380e5f492b4915ae93c4317050ac8948d9293d1e8cd20")
-                    .unwrap()
-            )
-        );
-
-        let pubkey = parse_donation_user(
-            None,
-            true,
-            &r#"{
-                "id": "test",
-                "pubkey": "npub1fuvh5hz9tvyesqnrsrjlfy45j9dwj0zrzuzs4jy53kff850ge5sq6te9w6"
-            }"#
-            .to_owned(),
-        );
-        assert_eq!(
-            pubkey,
-            Some(
-                hex::decode("4f197a5c455b0998026380e5f492b4915ae93c4317050ac8948d9293d1e8cd20")
-                    .unwrap()
-            )
-        );
+        zap_receipt: NotSet,
     }
 }

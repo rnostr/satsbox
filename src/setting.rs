@@ -238,18 +238,18 @@ impl Default for Lnurl {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 #[serde(default)]
 pub struct Donation {
     /// nostr private key for mark donors
     pub privkey: Option<Privkey>,
 }
 
-impl Default for Donation {
-    fn default() -> Self {
-        Self { privkey: None }
-    }
-}
+// impl Default for Donation {
+//     fn default() -> Self {
+//         Self { privkey: None }
+//     }
+// }
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(default)]

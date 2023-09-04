@@ -219,7 +219,7 @@ async fn connect(privkey: SecretKey, state: &AppState) -> Result<Client> {
     let client = Client::with_opts(&keys, opts);
 
     for url in &state.setting.nwc.relays {
-        client.add_relay(url, None).await?;
+        client.add_relay(url.as_str(), None).await?;
     }
     client.connect().await;
     Ok(client)

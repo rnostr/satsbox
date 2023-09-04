@@ -81,7 +81,7 @@ impl AppState {
         let mut service = Service::new(conf.0, conf.1, conn);
         // set donation receiver
         if let Some(prikey) = &setting.donation.privkey {
-            let keys = Keys::new(prikey.clone().into());
+            let keys = Keys::new((*prikey).into());
             service.donation_receiver = Some(keys.public_key().serialize().to_vec());
         }
 

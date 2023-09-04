@@ -104,11 +104,24 @@ pub struct Model {
 
     /// LUD-18 payerdata
     #[sea_orm(column_type = "Text")]
-    pub payer_data: Option<String>,
+    pub payer: Option<String>,
+    pub payer_name: Option<String>,
+    pub payer_email: Option<String>,
+    #[sea_orm(column_type = "Binary(BlobSize::Blob(None))")]
+    pub payer_pubkey: Option<Vec<u8>>,
 
-    /// NIP-57 zap
+    /// NIP-57 zap, zap event event is stored in the description field
     pub zap: bool,
     pub zap_status: i32,
+    /// zap from user
+    #[sea_orm(column_type = "Binary(BlobSize::Blob(None))")]
+    pub zap_from: Option<Vec<u8>>,
+    /// zap to user pubkey
+    #[sea_orm(column_type = "Binary(BlobSize::Blob(None))")]
+    pub zap_pubkey: Option<Vec<u8>>,
+    /// zap to event id
+    #[sea_orm(column_type = "Binary(BlobSize::Blob(None))")]
+    pub zap_event: Option<Vec<u8>>,
     /// NIP-57 zap receipt event
     #[sea_orm(column_type = "Text")]
     pub zap_receipt: Option<String>,

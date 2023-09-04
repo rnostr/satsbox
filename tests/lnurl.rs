@@ -260,17 +260,19 @@ async fn zaps() -> Result<()> {
     let opts = Options::new();
     let client = Client::with_opts(&user_keys, opts);
     for url in &state.setting.lnurl.relays {
-        client.add_relay(url, None).await?;
+        client.add_relay(url.as_str(), None).await?;
     }
     client.connect().await;
 
-    let filter = Filter::new().kind(Kind::Zap).pubkey(user_keys.public_key());
+    let filter = Filter::new()
+        .kind(Kind::ZapReceipt)
+        .pubkey(user_keys.public_key());
     client.subscribe(vec![filter]).await;
 
     let event = wait(&client, 5, |notification| async {
         match notification {
             RelayPoolNotification::Event(_url, event) => {
-                if event.kind == Kind::Zap {
+                if event.kind == Kind::ZapReceipt {
                     return Ok(Some(event));
                 }
             }
@@ -281,7 +283,7 @@ async fn zaps() -> Result<()> {
     .await?;
 
     // validate zap
-    assert_eq!(event.kind, Kind::Zap);
+    assert_eq!(event.kind, Kind::ZapReceipt);
     let description = event
         .tags
         .iter()

@@ -1,14 +1,19 @@
 //! lnurl api
 
-use crate::{full_uri_from_req, AppState, Error, InvoiceExtra, Result};
+use crate::{
+    full_uri_from_req,
+    service::{InvoicePayer, InvoiceZap},
+    AppState, Error, InvoiceExtra, Result,
+};
 use actix_web::{
     get, http::StatusCode, http::Uri, web, HttpRequest, HttpResponse, Responder, ResponseError,
     Scope,
 };
 use entity::invoice;
 use nostr_sdk::{
-    prelude::FromBech32, secp256k1::XOnlyPublicKey, Client, Event, EventId, Keys, Kind, Options,
-    Tag, Timestamp, UnsignedEvent,
+    prelude::{verify_delegation_signature, FromBech32},
+    secp256k1::XOnlyPublicKey,
+    Client, Event, EventId, Keys, Kind, Options, Tag, Timestamp, UnsignedEvent,
 };
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DbConn, EntityTrait, FromQueryResult, QueryFilter, QuerySelect,
@@ -152,6 +157,10 @@ pub async fn create_invoice(
     }
 
     let payer_data = query.payerdata.clone();
+    let mut payer = None;
+    if let Some(data) = &payer_data {
+        payer = Some(serde_json::from_str::<InvoicePayer>(data).map_err(Error::from)?);
+    }
 
     let comment = query.comment.clone();
     if let Some(comment) = &comment {
@@ -175,21 +184,46 @@ pub async fn create_invoice(
         }
 
         let mut relays = vec![];
+        let mut event_id = None;
         let mut e_count = 0;
+        let mut pubkey = None;
         let mut p_count = 0;
         let mut amount = None;
+        let mut delegator = None;
         for tag in &event.tags {
             match tag {
                 Tag::Relays(r) => {
                     relays = r.clone();
                 }
-                Tag::PubKey(_, _) => {
+                Tag::PubKey(p, _) => {
+                    pubkey = Some(*p);
                     p_count += 1;
                 }
-                Tag::Event(_, _, _) => {
+                Tag::Event(e, _, _) => {
+                    event_id = Some(*e);
                     e_count += 1;
                 }
                 Tag::Amount(num) => amount = Some(*num),
+                Tag::Delegation {
+                    delegator_pk,
+                    conditions,
+                    sig,
+                } => {
+                    // validate nip26
+                    if verify_delegation_signature(
+                        *delegator_pk,
+                        *sig,
+                        event.pubkey,
+                        conditions.clone(),
+                    )
+                    .is_err()
+                    {
+                        return Err(LnurlError::Invalid(
+                            "Nostr event delegation is invalid".to_owned(),
+                        ));
+                    }
+                    delegator = Some(*delegator_pk);
+                }
                 _ => {}
             }
         }
@@ -217,21 +251,27 @@ pub async fn create_invoice(
                 ));
             }
         }
+        // nip26 delegation support.
+        let from = Some(delegator.unwrap_or(event.pubkey));
         let extra = InvoiceExtra {
             source: invoice::Source::Zaps,
-            zap: true,
+            zap: Some(InvoiceZap {
+                from,
+                pubkey,
+                event: event_id,
+            }),
             comment,
-            zap_receipt: None,
             payer_data,
+            payer,
         };
         (event_str, extra)
     } else {
         let extra = InvoiceExtra {
             source: invoice::Source::Lnurlp,
-            zap: false,
+            zap: None,
             comment,
-            zap_receipt: None,
             payer_data,
+            payer,
         };
         // lud06, lud18 description hash
         let memo = format!(
@@ -372,7 +412,7 @@ async fn send_receipt(
         tags.push(t.clone());
     }
 
-    let kind = Kind::Zap;
+    let kind = Kind::ZapReceipt;
     let content = "".to_owned();
 
     let created_at: Timestamp = Timestamp::from(invoice.paid_at as u64);
