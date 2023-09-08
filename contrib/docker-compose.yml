@@ -10,8 +10,6 @@ services:
     # https://github.com/lncm/docker-bitcoind
     image: lncm/bitcoind:v25.0
     #user: 1000:1000
-    volumes:
-      - ./data/bitcoin:/data/.bitcoin
     networks:
       - default
     command:
@@ -28,11 +26,6 @@ services:
       - "-zmqpubrawblock=tcp://0.0.0.0:28335"
       - "-zmqpubrawtx=tcp://0.0.0.0:28335"
       - "-zmqpubhashblock=tcp://0.0.0.0:28336"
-    #ports:
-    #  - 8332:8332
-    #  - 18332:18332
-    #  - 18443:18443
-    #  - 18444:18444
     
   #btc-explorer:
   #  restart: unless-stopped
@@ -98,8 +91,6 @@ services:
       - --bitcoind.zmqpubrawtx=tcp://bitcoind:28336 
       - --accept-amp
       - --accept-keysend
-    volumes:
-      - ./data/lnd:/root/.lnd
     networks:
       - default
     links:
@@ -111,7 +102,7 @@ services:
 
   cln:
     restart: unless-stopped
-    image: elementsproject/lightningd:v23.05.1
+    image: elementsproject/lightningd:v23.08
     command:
       - --log-level=debug
       - --alias=cln
@@ -130,8 +121,6 @@ services:
       - --grpc-port=10008
     ports:
       - 8008:10008
-    volumes:
-      - ./data/cln:/root/.lightning
     networks:
       - default
     links:
@@ -148,8 +137,6 @@ services:
       POSTGRES_USER: test
     ports:
       - 8432:5432
-    volumes:
-      - ./data/postgres:/var/lib/postgresql/data
 
   mariadb:
     image: mariadb:11
@@ -161,8 +148,6 @@ services:
       MARIADB_PASSWORD: test
     ports:
       - 8306:3306
-    volumes:
-      - ./data/mariadb:/var/lib/mysql
 
   rnostr:
     image: rnostr/rnostr:latest

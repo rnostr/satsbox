@@ -1,0 +1,17 @@
+version: '3.8'
+services:
+  bitcoind:
+    volumes:
+      - ./data/bitcoin:/data/.bitcoin
+  lnd:
+    volumes:
+      - ./data/lnd:/root/.lnd
+  cln:
+    volumes:
+      - ./data/cln:/root/.lightning
+  pg:
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+  mariadb:
+    volumes:
+      - ./data/mariadb:/var/lib/mysql
