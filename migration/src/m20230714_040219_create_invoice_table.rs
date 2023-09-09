@@ -31,6 +31,11 @@ impl MigrationTrait for Migration {
                             .not_null(),
                     )
                     .col(
+                        ColumnDef::new(invoice::Column::Index)
+                            .big_integer()
+                            .not_null(),
+                    )
+                    .col(
                         ColumnDef::new(invoice::Column::Type)
                             .integer()
                             .not_null()

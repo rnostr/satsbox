@@ -472,16 +472,23 @@ impl Service {
             .filter(invoice::Column::Type.eq(invoice::Type::Invoice))
             .filter(invoice::Column::Status.ne(invoice::Status::Canceled))
             .filter(invoice::Column::GeneratedAt.gte(from_time as i64))
+            .order_by_asc(invoice::Column::GeneratedAt)
             .all(self.db())
             .await?;
+        let mut updated = 0;
+
+        if invoices.is_empty() {
+            return Ok(updated);
+        }
+        let first = invoices.first().unwrap();
+
         let map = self
             .lightning
-            .list_invoices(Some(from_time), None)
+            .list_invoices(Some((from_time, first.index as u64)), None)
             .await?
             .into_iter()
             .map(|inv| (inv.payment_hash.clone(), inv))
             .collect::<HashMap<_, _>>();
-        let mut updated = 0;
         for invoice in invoices.iter() {
             if let Some(remote) = map.get(&invoice.payment_hash) {
                 match invoice.status {
@@ -1016,6 +1023,7 @@ fn create_invoice_active_model(
         user_id: Set(user.id),
         user_pubkey: Set(user.pubkey.clone()),
         payee: Set(invoice.payee),
+        index: Set(invoice.index as i64),
         r#type: Set(invoice::Type::Invoice),
         status: Set(invoice::Status::Unpaid),
         payment_hash: Set(invoice.payment_hash),

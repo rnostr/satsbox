@@ -57,6 +57,15 @@ pub async fn create_invoice<L: Lightning>(client: &L) -> Result<()> {
     let list = client.list_invoices(None, None).await?;
     let item = list.iter().find(|i| &i.payment_hash == &hash);
     assert!(item.is_some());
+
+    let list = client
+        .list_invoices(Some((invoice.created_at, invoice.index)), None)
+        .await?;
+    let item = list.iter().find(|i| &i.payment_hash == &hash);
+    assert!(item.is_some());
+    // time equal
+    assert_eq!(list.first().unwrap().created_at, invoice.created_at);
+
     Ok(())
 }
 
@@ -73,7 +82,7 @@ pub async fn payment<L1: Lightning, L2: Lightning>(c1: &L1, c2: &L2) -> Result<(
 
     let inv = c2.lookup_invoice(payment_hash.clone()).await?;
     assert_eq!(inv.status, InvoiceStatus::Open);
-    assert_eq!(inv.id, invoice.id);
+    assert_eq!(inv.index, invoice.index);
     assert_eq!(inv.paid_amount, 0);
     assert_eq!(inv.paid_at, 0);
 
@@ -116,7 +125,7 @@ pub async fn payment_error<L1: Lightning, L2: Lightning>(c1: &L1, c2: &L2) -> Re
 
     let inv = c2.lookup_invoice(payment_hash.clone()).await?;
     assert_eq!(inv.status, InvoiceStatus::Open);
-    assert_eq!(inv.id, invoice.id);
+    assert_eq!(inv.index, invoice.index);
 
     // println!("invoice {:?}", inv);
 

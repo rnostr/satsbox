@@ -34,7 +34,7 @@ impl Default for InvoiceStatus {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Invoice {
-    pub id: String,
+    pub index: u64,
     pub bolt11: String,
     #[serde(with = "hex::serde")]
     pub payee: Vec<u8>,
@@ -155,8 +155,13 @@ pub trait Lightning: DynClone {
     /// lookup invoice
     async fn lookup_invoice(&self, payment_hash: Vec<u8>) -> Result<Invoice>;
 
-    /// list invoices by creation time
-    async fn list_invoices(&self, from: Option<u64>, to: Option<u64>) -> Result<Vec<Invoice>>;
+    /// list invoices bye (creation_time, index)
+    /// cln use index, lnd use creatione_time
+    async fn list_invoices(
+        &self,
+        from: Option<(u64, u64)>,
+        to: Option<u64>,
+    ) -> Result<Vec<Invoice>>;
 
     /// pay a lightning invoice, return payment hash,
     /// need check payment status by `lookup_payment` if error

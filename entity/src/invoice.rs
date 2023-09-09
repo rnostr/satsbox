@@ -62,6 +62,8 @@ pub struct Model {
     pub service: String,
     pub source: Source,
 
+    pub index: i64,
+
     #[sea_orm(column_type = "Binary(BlobSize::Blob(None))")]
     pub payment_hash: Vec<u8>,
     #[sea_orm(column_type = "Binary(BlobSize::Blob(None))")]
@@ -113,7 +115,7 @@ pub struct Model {
     /// NIP-57 zap, zap event event is stored in the description field
     pub zap: bool,
     pub zap_status: i32,
-    /// zap from user
+    /// zap from user, nip26 
     #[sea_orm(column_type = "Binary(BlobSize::Blob(None))")]
     pub zap_from: Option<Vec<u8>>,
     /// zap to user pubkey

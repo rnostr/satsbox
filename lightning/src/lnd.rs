@@ -278,7 +278,7 @@ impl Lightning for Lnd {
             .into_inner();
 
         let mut invoice = Invoice::from_bolt11(data.payment_request)?;
-        invoice.id = data.add_index.to_string();
+        invoice.index = data.add_index;
         invoice.description = Some(memo);
         invoice.status = InvoiceStatus::Open;
         Ok(invoice)
@@ -329,12 +329,16 @@ impl Lightning for Lnd {
         map_invoice(data)
     }
 
-    async fn list_invoices(&self, from: Option<u64>, to: Option<u64>) -> Result<Vec<Invoice>> {
+    async fn list_invoices(
+        &self,
+        from: Option<(u64, u64)>,
+        to: Option<u64>,
+    ) -> Result<Vec<Invoice>> {
         let data = self
             .lightning
             .clone()
             .list_invoices(lnrpc::ListInvoiceRequest {
-                creation_date_start: from.unwrap_or_default(),
+                creation_date_start: from.map(|f| f.0).unwrap_or_default(),
                 creation_date_end: to.unwrap_or_default(),
                 num_max_invoices: 1_000_000, // default 100
                 ..Default::default()
@@ -436,7 +440,7 @@ fn map_invoice(data: lnrpc::Invoice) -> Result<Invoice> {
     };
 
     let mut invoice = Invoice::from_bolt11(data.payment_request)?;
-    invoice.id = data.add_index.to_string();
+    invoice.index = data.add_index;
     invoice.status = status;
     invoice.paid_at = data.settle_date as u64;
     invoice.paid_amount = data.amt_paid_msat as u64;

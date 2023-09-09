@@ -88,7 +88,7 @@ fn amount(msat: u64) -> Amount {
     Amount { msat }
 }
 
-fn rand_id() -> String {
+fn rand_label() -> String {
     let mut store_key_bytes = [0u8; 16];
     rand::thread_rng().fill_bytes(&mut store_key_bytes);
     hex::encode(store_key_bytes)
@@ -124,7 +124,6 @@ impl Lightning for Cln {
         preimage: Option<Vec<u8>>,
         expiry: Option<u64>,
     ) -> Result<Invoice> {
-        let id = rand_id();
         let data = self
             .node
             .clone()
@@ -133,7 +132,7 @@ impl Lightning for Cln {
                 preimage,
                 description: memo.clone(),
                 expiry,
-                label: id.clone(),
+                label: rand_label(),
                 deschashonly: Some(true),
                 ..Default::default()
             })
@@ -141,7 +140,7 @@ impl Lightning for Cln {
             .into_inner();
 
         let mut invoice = Invoice::from_bolt11(data.bolt11)?;
-        invoice.id = id;
+        invoice.index = data.created_index.unwrap_or_default();
         // set the description
         invoice.description = Some(memo);
         invoice.status = InvoiceStatus::Open;
@@ -195,18 +194,40 @@ impl Lightning for Cln {
 
     // wait lnd support pagination
     // https://github.com/ElementsProject/lightning/issues/6348
-    async fn list_invoices(&self, _from: Option<u64>, _to: Option<u64>) -> Result<Vec<Invoice>> {
-        let data = self
-            .node
-            .clone()
-            .list_invoices(ListinvoicesRequest {
-                ..Default::default()
-            })
-            .await?
-            .into_inner();
+    async fn list_invoices(
+        &self,
+        from: Option<(u64, u64)>,
+        to: Option<u64>,
+    ) -> Result<Vec<Invoice>> {
         let mut invoices = vec![];
-        for invoice in data.invoices {
-            invoices.push(map_invoice(invoice)?);
+        let limit: usize = 50;
+        let mut start = from.map(|f| f.1);
+
+        'next: loop {
+            let data = self
+                .node
+                .clone()
+                .list_invoices(ListinvoicesRequest {
+                    index: Some(cln::listinvoices_request::ListinvoicesIndex::Created.into()),
+                    limit: Some(limit as u32),
+                    start,
+                    ..Default::default()
+                })
+                .await?
+                .into_inner();
+            let len = data.invoices.len();
+            for invoice in data.invoices {
+                let inv = map_invoice(invoice)?;
+                if to.is_some() && inv.created_at > to.unwrap() {
+                    break 'next;
+                }
+                invoices.push(inv);
+            }
+            if len >= limit && start.is_some() {
+                start = Some(invoices.last().unwrap().index);
+            } else {
+                break;
+            }
         }
         Ok(invoices)
     }
@@ -269,7 +290,7 @@ fn map_invoice(inv: ListinvoicesInvoices) -> Result<Invoice> {
         inv.bolt11
             .ok_or_else(|| Error::Invalid("missing bolt11".to_owned()))?,
     )?;
-    invoice.id = inv.label;
+    invoice.index = inv.created_index.unwrap_or_default();
     invoice.status = status;
     invoice.paid_at = inv.paid_at.unwrap_or_default();
     invoice.paid_amount = inv.amount_received_msat.map(|m| m.msat).unwrap_or_default();
