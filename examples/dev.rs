@@ -90,7 +90,7 @@ async fn main() -> Result<()> {
         let user = state.service.get_or_create_user(u.pubkey.clone()).await?;
         state
             .service
-            .update_user_name(user.id, Some(u.name.to_string()))
+            .update_username(user.id, Some(u.name.to_string()))
             .await?;
         state
             .service

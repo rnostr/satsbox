@@ -18,7 +18,7 @@ async fn nip05() -> Result<()> {
     let user = state.service.get_or_create_user(pubkey.clone()).await?;
     state
         .service
-        .update_user_name(user.id, Some("admin".to_owned()))
+        .update_username(user.id, Some("admin".to_owned()))
         .await?;
 
     let app = init_service(create_web_app(web::Data::new(state))).await;

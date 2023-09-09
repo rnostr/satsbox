@@ -68,12 +68,15 @@ pub enum Error {
     InsufficientBalance,
     #[error("Rate limiter exceeded")]
     RateLimited,
+    #[error("{0}")]
+    InvalidParam(String),
 }
 
 impl ResponseError for Error {
     fn status_code(&self) -> StatusCode {
         match self {
             Error::Auth(_) => StatusCode::UNAUTHORIZED,
+            Error::InvalidParam(_) => StatusCode::BAD_REQUEST,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }

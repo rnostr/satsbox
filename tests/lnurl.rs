@@ -28,7 +28,7 @@ async fn common() -> Result<()> {
     let user = state.service.get_or_create_user(pubkey.clone()).await?;
     state
         .service
-        .update_user_name(user.id, Some("admin".to_owned()))
+        .update_username(user.id, Some("admin".to_owned()))
         .await?;
 
     let state = web::Data::new(state);
@@ -105,7 +105,7 @@ async fn payerdata() -> Result<()> {
     let user = state.service.get_or_create_user(pubkey.clone()).await?;
     state
         .service
-        .update_user_name(user.id, Some("admin".to_owned()))
+        .update_username(user.id, Some("admin".to_owned()))
         .await?;
 
     let state = web::Data::new(state);
@@ -165,7 +165,7 @@ async fn zaps() -> Result<()> {
         .await?;
     state
         .service
-        .update_user_name(admin.id, Some("admin".to_owned()))
+        .update_username(admin.id, Some("admin".to_owned()))
         .await?;
 
     let user = state
@@ -377,7 +377,7 @@ async fn donate_by_lud18() -> Result<()> {
         .await?;
     state
         .service
-        .update_user_name(donation_receiver.id, Some("donation".to_owned()))
+        .update_username(donation_receiver.id, Some("donation".to_owned()))
         .await?;
 
     let payer_pubkey =

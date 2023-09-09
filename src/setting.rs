@@ -243,6 +243,17 @@ impl Default for Lnurl {
 pub struct Donation {
     /// nostr private key for mark donors
     pub privkey: Option<Privkey>,
+    /// Recommended donations
+    pub amounts: Vec<u64>,
+    /// restrict username setting by donation
+    pub restrict_username: bool,
+}
+
+impl Donation {
+    /// get the donation level
+    pub fn level(&self, amount: u64) -> Option<usize> {
+        self.amounts.iter().rposition(|a| amount >= *a)
+    }
 }
 
 // impl Default for Donation {
@@ -479,6 +490,7 @@ impl Setting {
             .list_separator(" ")
             .with_list_parse_key("nwc.relays")
             .with_list_parse_key("lnurl.relays")
+            .with_list_parse_key("donation.amounts")
     }
 
     /// read config from env

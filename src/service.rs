@@ -147,11 +147,7 @@ impl Service {
         .await?)
     }
 
-    pub async fn update_user_name(
-        &self,
-        user_id: i32,
-        name: Option<String>,
-    ) -> Result<user::Model> {
+    pub async fn update_username(&self, user_id: i32, name: Option<String>) -> Result<user::Model> {
         Ok(user::ActiveModel {
             id: Set(user_id),
             username: Set(name),
