@@ -1,5 +1,7 @@
 # Satsbox
 
+Under development, datasheets may not support upgrades.
+
 Nostr friendly bitcoin lightning custodial wallet service.
 
 ## Features
