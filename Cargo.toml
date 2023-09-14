@@ -11,6 +11,8 @@ homepage.workspace = true
 repository.workspace = true
 authors.workspace = true
 
+exclude = ["./ui"]
+
 [dependencies]
 lightning-client = { version = "0.1.0", path = "./lightning" }
 migration = { version = "0.1.0", package = "satsbox-migration", path = "./migration" }
