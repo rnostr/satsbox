@@ -100,11 +100,10 @@ pub fn create_web_app(
         InitError = (),
     >,
 > {
-    WebApp::new()
+    let app = WebApp::new()
         .app_data(data)
         .wrap(middleware::Logger::default()) // enable logger
         .configure(lndhub::configure)
-        .service(api::scope())
         .service(
             web::scope("/.well-known")
                 .wrap(
@@ -117,7 +116,22 @@ pub fn create_web_app(
                 )
                 .service(lnurl::scope())
                 .service(nip05::info),
+        );
+    if cfg!(debug_assertions) {
+        // cors domain test when debug
+        app.service(
+            api::scope().wrap(
+                Cors::default()
+                    .send_wildcard()
+                    .allow_any_header()
+                    .allow_any_origin()
+                    .allow_any_method()
+                    .max_age(86_400),
+            ),
         )
+    } else {
+        app.service(api::scope())
+    }
 }
 
 /// start the service sync task for sync invoices and payments from lightning node.

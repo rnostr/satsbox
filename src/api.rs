@@ -1,6 +1,6 @@
 //! http api
 
-use crate::{auth, setting::Setting, AppState, Error, Result};
+use crate::{auth, key::Privkey, setting::Setting, AppState, Error, Result};
 use actix_web::{get, http::Uri, post, web, HttpResponse, Responder, Scope};
 use entity::user;
 use nostr_sdk::Keys;
@@ -23,14 +23,13 @@ pub fn scope() -> Scope {
         .service(update_username)
 }
 
+fn privkey_to_pubkey(k: Privkey) -> String {
+    Keys::new(k.into()).public_key().to_string()
+}
+
 #[get("/info")]
 pub async fn info(state: web::Data<AppState>) -> Result<HttpResponse, Error> {
     let info = state.service.info().await?;
-    let donation_pubkey = state
-        .setting
-        .donation
-        .privkey
-        .map(|k| Keys::new(k.into()).public_key().to_string());
 
     let username_chars: Vec<usize> = (0..state.setting.donation.amounts.len())
         .map(|i| i + 2)
@@ -45,11 +44,15 @@ pub async fn info(state: web::Data<AppState>) -> Result<HttpResponse, Error> {
         },
         "fee": state.setting.fee,
         "donation": {
-            "pubkey": donation_pubkey,
+            "pubkey": state.setting.donation.privkey.map(privkey_to_pubkey),
             "amounts": state.setting.donation.amounts,
             "restrict_username": state.setting.donation.restrict_username,
             "username_chars": username_chars,
-        }
+        },
+        "nwc": {
+            "pubkey": state.setting.nwc.privkey.map(privkey_to_pubkey),
+            "relays": state.setting.nwc.relays,
+        },
     })))
 }
 
