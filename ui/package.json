@@ -11,7 +11,9 @@
   },
   "dependencies": {
     "@vueuse/core": "^10.4.1",
+    "axios": "^1.5.0",
     "element-plus": "^2.3.12",
+    "nostr-tools": "^1.15.0",
     "vue": "^3.3.4",
     "vue-router": "^4.2.4"
   },

@@ -46,6 +46,8 @@ h3 a {
 }
 
 .switch-item {
+  display: inline-flex;
+  justify-content: center;
   /*
   right: 20px;
   top: 18px;
@@ -118,18 +120,15 @@ h3 a {
 }
 
 .menu-item {
-  display: inline-flex;
-  justify-content: center;
+  display: flex;
   align-items: center;
-  height: 100%;
-  margin: 0;
-  border-bottom: 2px solid transparent;
-  color: var(--el-menu-text-color);
+  height: var(--el-menu-item-height);
   line-height: var(--el-menu-item-height);
   font-size: var(--el-menu-item-font-size);
+  color: var(--el-menu-text-color);
   padding: 0 var(--el-menu-base-level-padding);
   list-style: none;
-  /*cursor: pointer;*/
+  cursor: pointer;
   position: relative;
   transition:
     border-color var(--el-transition-duration),

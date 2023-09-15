@@ -2,15 +2,27 @@
 import { useDark, useToggle } from '@vueuse/core'
 const isDark = useDark()
 const toggleDark = useToggle(isDark)
+import { generatePrivateKey, getPublicKey } from 'nostr-tools'
+import axios from 'axios'
+import { reactive, ref } from 'vue'
+const login = reactive({
+  privkey: '',
+})
+const loginFormVisible = ref(true)
+const onSubmit = () => {
+  loginFormVisible.value = false
+  console.log(login)
+}
 </script>
 
 <template>
   <el-container>
     <el-header>
-      <el-menu></el-menu>
+      <el-menu> </el-menu>
       <ul class="menu">
         <li class="menu-item">Satsbox</li>
         <div class="flex-grow" />
+        <li class="menu-item"><el-button>Logout</el-button></li>
         <li class="menu-item">
           <div class="switch-item" @click="toggleDark()">
             <div class="switch" role="switch">
@@ -37,7 +49,70 @@ const toggleDark = useToggle(isDark)
         </li>
       </ul>
     </el-header>
-    <el-main>Main</el-main>
+    <el-main>
+      <el-dialog v-model="loginFormVisible" :show-close="false" :center="true">
+        <el-form :model="login" @submit.prevent="onSubmit">
+          <el-form-item>
+            <el-input
+              size="large"
+              v-model="login.privkey"
+              autocomplete="off"
+              placeholder="Login with nostr private key"
+            />
+          </el-form-item>
+        </el-form>
+        <template #footer>
+          <span class="dialog-footer">
+            <el-button type="primary" @click="onSubmit"> Confirm </el-button>
+          </span>
+        </template>
+      </el-dialog>
+      <div>
+        <el-row :gutter="20">
+          <el-col :xs="24" :sm="12">
+            <el-card class="box-card">
+              <template #header>
+                <div class="card-header">
+                  <span>Account information</span>
+                </div>
+              </template>
+              <div>Balance:</div>
+            </el-card>
+          </el-col>
+          <el-col :xs="24" :sm="12">
+            <el-card class="box-card">
+              <template #header>
+                <div class="card-header">
+                  <span>Lndhub</span>
+                </div>
+              </template>
+              <div>Balance:</div>
+              <div>Balance:</div>
+            </el-card>
+          </el-col>
+          <el-col :xs="24" :sm="12">
+            <el-card class="box-card">
+              <template #header>
+                <div class="card-header">
+                  <span>Nostr Wallet Connect</span>
+                </div>
+              </template>
+              <div>Balance:</div>
+            </el-card>
+          </el-col>
+          <el-col :xs="24" :sm="12">
+            <el-card class="box-card">
+              <template #header>
+                <div class="card-header">
+                  <span>Donation</span>
+                </div>
+              </template>
+              <div>Balance:</div>
+            </el-card>
+          </el-col>
+        </el-row>
+      </div>
+    </el-main>
     <el-footer>Footer</el-footer>
   </el-container>
 </template>
