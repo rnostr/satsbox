@@ -3,15 +3,19 @@ import { useDark, useToggle } from '@vueuse/core'
 const isDark = useDark()
 const toggleDark = useToggle(isDark)
 import { generatePrivateKey, getPublicKey } from 'nostr-tools'
-import axios from 'axios'
+import { auth, get, post } from './request'
+import { decodePrivkey } from './util'
 import { reactive, ref } from 'vue'
 const login = reactive({
-  privkey: '',
+  privkey: import.meta.env.VITE_DEMO_PRIVKEY || '',
 })
 const loginFormVisible = ref(true)
 const onSubmit = () => {
   loginFormVisible.value = false
-  console.log(login)
+  get('v1/info').then((res) => {
+    console.log(res)
+  })
+  console.log(login.privkey)
 }
 </script>
 
@@ -50,7 +54,13 @@ const onSubmit = () => {
       </ul>
     </el-header>
     <el-main>
-      <el-dialog v-model="loginFormVisible" :show-close="false" :center="true">
+      <el-dialog
+        v-model="loginFormVisible"
+        :show-close="false"
+        :center="true"
+        :close-on-click-modal="false"
+        :close-on-press-escape="false"
+      >
         <el-form :model="login" @submit.prevent="onSubmit">
           <el-form-item>
             <el-input
