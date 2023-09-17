@@ -101,9 +101,22 @@ pub async fn my(
         .await?
         .unwrap_or_default();
 
+    let pubkey = hex::encode(nostr_user.pubkey);
+    let host = nostr_user
+        .url
+        .authority()
+        .map(|a| a.as_str())
+        .unwrap_or_default();
+    let address = format!(
+        "{}@{}",
+        user.username.clone().unwrap_or(pubkey.clone()),
+        host,
+    );
+
     let (allowed, min) = get_username_setting(&state.setting, user.donate_amount as u64);
     Ok(web::Json(json!({"user": {
-        "pubkey": hex::encode(nostr_user.pubkey),
+        "pubkey": pubkey,
+        "address": address,
         "balance": user.balance,
         "lock_amount": user.lock_amount,
         "username": user.username,
