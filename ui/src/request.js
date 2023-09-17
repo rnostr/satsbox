@@ -1,15 +1,58 @@
 import axios from 'axios'
 import { ElMessageBox } from 'element-plus'
+import { getSignature, getEventHash, getPublicKey } from 'nostr-tools'
+import { sha256 } from 'js-sha256'
+const baseURL = import.meta.env.VITE_API_BASE_URL
 
 export const auth = {
   privkey: null,
   get(path, config) {
+    config = { ...config }
+    if (!auth.privkey) {
+      return Promise.reject(new Error('Missing privkey'))
+    }
+    let { token } = createEvent(auth.privkey, baseURL + path)
+    config.headers = { ...config.headers, Authorization: 'Nostr ' + token }
     return get(path, config)
+  },
+  post(path, data, config) {
+    data = data || {}
+    config = { ...config }
+    if (!auth.privkey) {
+      return Promise.reject(new Error('Missing privkey'))
+    }
+    let { token } = createEvent(auth.privkey, baseURL + path, data)
+    config.headers = { ...config.headers, Authorization: 'Nostr ' + token }
+    return post(path, data, config)
   },
 }
 
+function createEvent(privkey, url, data) {
+  let isPost = data !== undefined
+  let tags = [
+    ['method', isPost ? 'POST' : 'GET'],
+    ['u', url],
+  ]
+  if (isPost) {
+    let hash = sha256.create()
+    hash.update(JSON.stringify(data))
+    tags.push(['payload', hash.hex()])
+  }
+  let event = {
+    kind: 27235,
+    created_at: Math.floor(Date.now() / 1000),
+    tags,
+    content: '',
+    pubkey: getPublicKey(privkey),
+  }
+
+  event.id = getEventHash(event)
+  event.sig = getSignature(event, privkey)
+  return { event, token: btoa(JSON.stringify(event)) }
+}
+
 const axiosInstance = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL,
+  baseURL,
   timeout: 60 * 1000,
   transformResponse: axios.defaults.transformResponse.concat((data) => {
     const error = parseError(data)

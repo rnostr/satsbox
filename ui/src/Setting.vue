@@ -2,20 +2,35 @@
 import { useDark, useToggle } from '@vueuse/core'
 const isDark = useDark()
 const toggleDark = useToggle(isDark)
-import { generatePrivateKey, getPublicKey } from 'nostr-tools'
 import { auth, get, post } from './request'
 import { decodePrivkey } from './util'
 import { reactive, ref } from 'vue'
+import { ElMessageBox } from 'element-plus'
+
 const login = reactive({
   privkey: import.meta.env.VITE_DEMO_PRIVKEY || '',
 })
 const loginFormVisible = ref(true)
+const user = ref({})
+const info = ref({})
+
 const onSubmit = () => {
-  loginFormVisible.value = false
-  get('v1/info').then((res) => {
-    console.log(res)
-  })
-  console.log(login.privkey)
+  try {
+    auth.privkey = decodePrivkey(login.privkey)
+    get('v1/info').then((res) => {
+      info.value = res.data
+      auth.get('v1/my').then((res) => {
+        loginFormVisible.value = false
+        user.value = res.data.user
+        console.log(info, user)
+      })
+      //auth.post('v1/update_username', { username: null }).then((res) => {
+      //  console.log(res.data)
+      //})
+    })
+  } catch (e) {
+    ElMessageBox.alert(e.message, 'Error')
+  }
 }
 </script>
 
@@ -86,7 +101,8 @@ const onSubmit = () => {
                   <span>Account information</span>
                 </div>
               </template>
-              <div>Balance:</div>
+              <p>Lightning Address: {{ user.address }}</p>
+              <p>Balance: {{ (user.balance || 0) / 1000 }} sats</p>
             </el-card>
           </el-col>
           <el-col :xs="24" :sm="12">
