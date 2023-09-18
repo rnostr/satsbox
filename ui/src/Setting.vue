@@ -18,6 +18,13 @@ const info = ref({ nwc: {}, donation: {} })
 const lndhubQr = ref('')
 const nwcQr = ref('')
 
+function logout() {
+  auth.privkey = null
+  loginFormVisible.value = true
+  user.value = { lndhub: {} }
+  info.value = { nwc: {}, donation: {} }
+}
+
 async function onCopy(txt) {
   try {
     await copy(txt)
@@ -53,9 +60,10 @@ async function updateUsername(username) {
   await auth.post('v1/update_username', { username })
 }
 
-const onSubmit = () => {
+const onLogin = () => {
   try {
     auth.privkey = decodePrivkey(login.privkey)
+    login.privkey = ''
     get('v1/info').then((res) => {
       info.value = res.data
       loadUser().then(() => {
@@ -75,7 +83,7 @@ const onSubmit = () => {
       <ul class="menu">
         <li class="menu-item">Satsbox</li>
         <div class="flex-grow" />
-        <li class="menu-item"><el-button>Logout</el-button></li>
+        <li v-if="user.pubkey" class="menu-item"><el-button @click="logout">Logout</el-button></li>
         <li class="menu-item">
           <div class="switch-item" @click="toggleDark()">
             <div class="switch" role="switch">
@@ -110,7 +118,7 @@ const onSubmit = () => {
         :close-on-click-modal="false"
         :close-on-press-escape="false"
       >
-        <el-form :model="login" @submit.prevent="onSubmit">
+        <el-form :model="login" @submit.prevent="onLogin">
           <el-form-item>
             <el-input
               size="large"
@@ -122,7 +130,7 @@ const onSubmit = () => {
         </el-form>
         <template #footer>
           <span class="dialog-footer">
-            <el-button type="primary" @click="onSubmit"> Confirm </el-button>
+            <el-button type="primary" @click="onLogin"> Confirm </el-button>
           </span>
         </template>
       </el-dialog>
