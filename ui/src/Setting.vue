@@ -2,31 +2,46 @@
 import { useDark, useToggle } from '@vueuse/core'
 const isDark = useDark()
 const toggleDark = useToggle(isDark)
-import { auth, get, post } from './request'
+import { auth, get } from './request'
 import { decodePrivkey } from './util'
 import { reactive, ref } from 'vue'
 import { ElMessageBox } from 'element-plus'
+import QRCode from 'qrcode'
 
 const login = reactive({
   privkey: import.meta.env.VITE_DEMO_PRIVKEY || '',
 })
 const loginFormVisible = ref(true)
-const user = ref({})
+const user = ref({ lndhub: {} })
 const info = ref({})
+const lndhubQr = ref('')
+
+async function loadUser() {
+  let res = await auth.get('v1/my')
+  user.value = res.data.user
+  //console.log(info, user)
+  if (res.data.user.lndhub.url) {
+    lndhubQr.value = await QRCode.toDataURL(res.data.user.lndhub.url)
+  }
+}
+
+async function resetLndhub(disable) {
+  await auth.post('v1/reset_lndhub', { disable: !!disable })
+  await loadUser()
+}
+
+async function updateUsername(username) {
+  await auth.post('v1/update_username', { username })
+}
 
 const onSubmit = () => {
   try {
     auth.privkey = decodePrivkey(login.privkey)
     get('v1/info').then((res) => {
       info.value = res.data
-      auth.get('v1/my').then((res) => {
+      loadUser().then(() => {
         loginFormVisible.value = false
-        user.value = res.data.user
-        console.log(info, user)
       })
-      //auth.post('v1/update_username', { username: null }).then((res) => {
-      //  console.log(res.data)
-      //})
     })
   } catch (e) {
     ElMessageBox.alert(e.message, 'Error')
@@ -112,8 +127,38 @@ const onSubmit = () => {
                   <span>Lndhub</span>
                 </div>
               </template>
-              <div>Balance:</div>
-              <div>Balance:</div>
+
+              <div v-if="user.lndhub.url">
+                <p><img :src="lndhubQr" /></p>
+                <p>
+                  <el-input v-model="user.lndhub.url" />
+                </p>
+                <p>
+                  <el-popconfirm
+                    title="Reset lndhub will make the previously
+                effective"
+                    @confirm="resetLndhub()"
+                  >
+                    <template v-slot:reference>
+                      <el-button>Reset</el-button>
+                    </template>
+                  </el-popconfirm>
+                  <el-popconfirm
+                    title="Disable lndhub will make the previously
+                effective"
+                    @confirm="resetLndhub(true)"
+                  >
+                    <template v-slot:reference>
+                      <el-button>Disable</el-button>
+                    </template>
+                  </el-popconfirm>
+                </p>
+              </div>
+              <div v-else>
+                <p>
+                  <el-button @click="resetLndhub()">Enable lndhub</el-button>
+                </p>
+              </div>
             </el-card>
           </el-col>
           <el-col :xs="24" :sm="12">
