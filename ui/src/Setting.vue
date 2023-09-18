@@ -1,27 +1,46 @@
 <script setup>
-import { useDark, useToggle } from '@vueuse/core'
+import { useDark, useToggle, useClipboard } from '@vueuse/core'
 const isDark = useDark()
 const toggleDark = useToggle(isDark)
 import { auth, get } from './request'
 import { decodePrivkey } from './util'
 import { reactive, ref } from 'vue'
-import { ElMessageBox } from 'element-plus'
+import { ElMessageBox, ElMessage } from 'element-plus'
 import QRCode from 'qrcode'
 
+const { isSupported, copy } = useClipboard()
 const login = reactive({
   privkey: import.meta.env.VITE_DEMO_PRIVKEY || '',
 })
 const loginFormVisible = ref(true)
 const user = ref({ lndhub: {} })
-const info = ref({})
+const info = ref({ nwc: {}, donation: {} })
 const lndhubQr = ref('')
+const nwcQr = ref('')
+
+async function onCopy(txt) {
+  try {
+    await copy(txt)
+    ElMessage.success('Copied!')
+  } catch (e) {
+    ElMessage.error(e.message)
+  }
+}
 
 async function loadUser() {
   let res = await auth.get('v1/my')
-  user.value = res.data.user
+  let u = res.data.user
+  let nwc = info.value.nwc
+  if (nwc.pubkey) {
+    u.nwc = `nostr+walletconnect://${nwc.pubkey}?relay=${nwc.relays[0]}&secret=${auth.privkey}&lud16=${u.address}`
+  }
+  user.value = u
   //console.log(info, user)
-  if (res.data.user.lndhub.url) {
-    lndhubQr.value = await QRCode.toDataURL(res.data.user.lndhub.url)
+  if (u.lndhub.url) {
+    lndhubQr.value = await QRCode.toDataURL(u.lndhub.url)
+  }
+  if (u.nwc) {
+    nwcQr.value = await QRCode.toDataURL(u.nwc)
   }
 }
 
@@ -131,7 +150,11 @@ const onSubmit = () => {
               <div v-if="user.lndhub.url">
                 <p><img :src="lndhubQr" /></p>
                 <p>
-                  <el-input v-model="user.lndhub.url" />
+                  <el-input v-model="user.lndhub.url"
+                    ><template v-if="isSupported" #append>
+                      <el-button @click="onCopy(user.lndhub.url)">Copy</el-button>
+                    </template></el-input
+                  >
                 </p>
                 <p>
                   <el-popconfirm
@@ -168,7 +191,16 @@ const onSubmit = () => {
                   <span>Nostr Wallet Connect</span>
                 </div>
               </template>
-              <div>Balance:</div>
+              <div v-if="user.nwc">
+                <p><img :src="nwcQr" /></p>
+                <p>
+                  <el-input v-model="user.nwc"
+                    ><template v-if="isSupported" #append>
+                      <el-button @click="onCopy(user.nwc)">Copy</el-button>
+                    </template></el-input
+                  >
+                </p>
+              </div>
             </el-card>
           </el-col>
           <el-col :xs="24" :sm="12">
@@ -184,7 +216,7 @@ const onSubmit = () => {
         </el-row>
       </div>
     </el-main>
-    <el-footer>Footer</el-footer>
+    <el-footer></el-footer>
   </el-container>
 </template>
 
