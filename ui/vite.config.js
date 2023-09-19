@@ -18,6 +18,13 @@ export default defineConfig({
   ],
   server: {
     port: 8081,
+    proxy: {
+      '^/wallet$': {
+        target: 'http://localhost:8081',
+        changeOrigin: true,
+        rewrite: (path) => path + '.html',
+      },
+    },
   },
   build: {
     sourcemap: false,
