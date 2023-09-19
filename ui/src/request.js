@@ -79,7 +79,7 @@ export function request(config) {
 
   let alert = config.alert
   if (alert !== false) {
-    alert = typeof alert == 'string' ? alert : 'Failed to load'
+    alert = typeof alert == 'string' ? alert : 'Error'
   }
 
   res = res.catch((err) => {

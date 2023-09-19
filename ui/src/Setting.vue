@@ -9,20 +9,67 @@ import { ElMessageBox, ElMessage } from 'element-plus'
 import QRCode from 'qrcode'
 
 const { isSupported, copy } = useClipboard()
+const demoKey = import.meta.env.VITE_DEMO_PRIVKEY || ''
 const login = reactive({
-  privkey: import.meta.env.VITE_DEMO_PRIVKEY || '',
+  privkey: demoKey,
 })
+const update = reactive({
+  username: '',
+})
+const donation = reactive({
+  amount: 0,
+})
+
 const loginFormVisible = ref(true)
 const user = ref({ lndhub: {} })
 const info = ref({ nwc: {}, donation: {} })
+
+const lndhubVisible = ref(false)
 const lndhubQr = ref('')
+
+const nwcVisible = ref(false)
 const nwcQr = ref('')
+
+const donationVisible = ref(false)
+const donationQr = ref('')
+const donationUrl = ref('')
 
 function logout() {
   auth.privkey = null
   loginFormVisible.value = true
   user.value = { lndhub: {} }
   info.value = { nwc: {}, donation: {} }
+}
+
+async function onChangeUsername() {
+  await auth.post('v1/update_username', { username: update.username || null })
+  await loadUser()
+  ElMessageBox.alert('Update success', 'Success')
+}
+
+async function onDonate() {
+  if (!user.value.pubkey) return
+
+  let amount = (parseInt(donation.amount) || 0) * 1000
+  if (amount <= 0) {
+    return ElMessageBox.alert('Amount must be greater than 0', 'Error')
+  }
+  let payer = encodeURIComponent(
+    JSON.stringify({
+      pubkey: user.value.pubkey,
+    })
+  )
+  let address = info.value.donation.address.split('@')
+  let url = `${window.location.protocol}//${address[1]}/.well-known/lnurlp/${address[0]}/callback?amount=${amount}&payerdata=${payer}`
+  let res = await get(url)
+  let data = res.data
+  if (data.status == 'ERROR') {
+    ElMessageBox.alert(data.reason, 'Error')
+    return
+  }
+  donationUrl.value = data.pr
+  donationVisible.value = true
+  donationQr.value = await QRCode.toDataURL(data.pr)
 }
 
 async function onCopy(txt) {
@@ -38,11 +85,15 @@ async function loadUser() {
   let res = await auth.get('v1/my')
   let u = res.data.user
   let nwc = info.value.nwc
+  if (info.value.donation.pubkey) {
+    donation.amount = info.value.donation.amounts[0] / 1000
+  }
   if (nwc.pubkey) {
     u.nwc = `nostr+walletconnect://${nwc.pubkey}?relay=${nwc.relays[0]}&secret=${auth.privkey}&lud16=${u.address}`
   }
   user.value = u
-  //console.log(info, user)
+  update.username = u.username || ''
+  if (demoKey) console.log(info.value, user.value)
   if (u.lndhub.url) {
     lndhubQr.value = await QRCode.toDataURL(u.lndhub.url)
   }
@@ -53,26 +104,21 @@ async function loadUser() {
 
 async function resetLndhub(disable) {
   await auth.post('v1/reset_lndhub', { disable: !!disable })
+  if (!disable) lndhubVisible = true
   await loadUser()
 }
 
-async function updateUsername(username) {
-  await auth.post('v1/update_username', { username })
-}
-
-const onLogin = () => {
+async function onLogin() {
   try {
     auth.privkey = decodePrivkey(login.privkey)
     login.privkey = ''
-    get('v1/info').then((res) => {
-      info.value = res.data
-      loadUser().then(() => {
-        loginFormVisible.value = false
-      })
-    })
   } catch (e) {
     ElMessageBox.alert(e.message, 'Error')
   }
+  let res = await get('v1/info')
+  info.value = res.data
+  await loadUser()
+  loginFormVisible.value = false
 }
 </script>
 
@@ -137,18 +183,74 @@ const onLogin = () => {
       <div>
         <el-row :gutter="20">
           <el-col :xs="24" :sm="12">
-            <el-card class="box-card">
+            <el-card class="card">
               <template #header>
                 <div class="card-header">
                   <span>Account information</span>
                 </div>
               </template>
+              <p>Pubkey: {{ user.pubkey }}</p>
               <p>Lightning Address: {{ user.address }}</p>
               <p>Balance: {{ (user.balance || 0) / 1000 }} sats</p>
             </el-card>
+            <el-card class="card" v-if="user.allow_update_username">
+              <template #header>
+                <div class="card-header">
+                  <span>Custom username</span>
+                </div>
+              </template>
+              <el-form :model="update" @submit.prevent="onChangeUsername">
+                <el-form-item>
+                  <el-input
+                    v-model="update.username"
+                    autocomplete="off"
+                    placeholder="Input username"
+                  />
+                </el-form-item>
+                <el-form-item>
+                  <el-button type="primary" @click="onChangeUsername"> Submit </el-button>
+                </el-form-item>
+              </el-form>
+            </el-card>
+            <el-card class="card" v-if="info.donation.pubkey">
+              <template #header>
+                <div class="card-header">
+                  <span>Donation</span>
+                </div>
+              </template>
+              <p>Donated: {{ user.donate_amount }} sats</p>
+              <el-form :model="donation" @submit.prevent="onDonate">
+                <el-form-item>
+                  <el-input v-model="donation.amount" type="number" />
+                </el-form-item>
+                <el-form-item>
+                  <el-radio-group v-model="donation.amount" v-if="info.donation.amounts.length > 1">
+                    <el-radio-button
+                      v-for="amount in info.donation.amounts"
+                      :key="amount"
+                      :label="amount / 1000"
+                      >{{ amount / 1000 }} sats</el-radio-button
+                    >
+                  </el-radio-group>
+                </el-form-item>
+                <el-form-item>
+                  <el-button type="primary" @click="onDonate"> Donate </el-button>
+                </el-form-item>
+              </el-form>
+              <div class="text-center" v-if="donationVisible">
+                <p><img :src="donationQr" /></p>
+                <p>
+                  <el-input v-model="donationUrl"
+                    ><template v-if="isSupported" #append>
+                      <el-button @click="onCopy(donationUrl)">Copy</el-button>
+                    </template></el-input
+                  >
+                </p>
+              </div>
+            </el-card>
           </el-col>
           <el-col :xs="24" :sm="12">
-            <el-card class="box-card">
+            <el-card class="card">
               <template #header>
                 <div class="card-header">
                   <span>Lndhub</span>
@@ -156,14 +258,21 @@ const onLogin = () => {
               </template>
 
               <div v-if="user.lndhub.url">
-                <p><img :src="lndhubQr" /></p>
                 <p>
-                  <el-input v-model="user.lndhub.url"
-                    ><template v-if="isSupported" #append>
-                      <el-button @click="onCopy(user.lndhub.url)">Copy</el-button>
-                    </template></el-input
+                  <el-button @click="lndhubVisible = !lndhubVisible"
+                    >{{ lndhubVisible ? 'Hide' : 'Show' }} connect url</el-button
                   >
                 </p>
+                <div class="text-center" v-if="lndhubVisible">
+                  <p><img :src="lndhubQr" /></p>
+                  <p>
+                    <el-input v-model="user.lndhub.url"
+                      ><template v-if="isSupported" #append>
+                        <el-button @click="onCopy(user.lndhub.url)">Copy</el-button>
+                      </template></el-input
+                    >
+                  </p>
+                </div>
                 <p>
                   <el-popconfirm
                     title="Reset lndhub will make the previously
@@ -191,15 +300,18 @@ const onLogin = () => {
                 </p>
               </div>
             </el-card>
-          </el-col>
-          <el-col :xs="24" :sm="12">
-            <el-card class="box-card">
+            <el-card class="card" v-if="user.nwc">
               <template #header>
                 <div class="card-header">
                   <span>Nostr Wallet Connect</span>
                 </div>
               </template>
-              <div v-if="user.nwc">
+              <p>
+                <el-button @click="nwcVisible = !nwcVisible"
+                  >{{ nwcVisible ? 'Hide' : 'Show' }} connect url</el-button
+                >
+              </p>
+              <div class="text-center" v-if="nwcVisible">
                 <p><img :src="nwcQr" /></p>
                 <p>
                   <el-input v-model="user.nwc"
@@ -209,16 +321,6 @@ const onLogin = () => {
                   >
                 </p>
               </div>
-            </el-card>
-          </el-col>
-          <el-col :xs="24" :sm="12">
-            <el-card class="box-card">
-              <template #header>
-                <div class="card-header">
-                  <span>Donation</span>
-                </div>
-              </template>
-              <div>Balance:</div>
             </el-card>
           </el-col>
         </el-row>
