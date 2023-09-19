@@ -128,7 +128,6 @@ h3 a {
   color: var(--el-menu-text-color);
   padding: 0 var(--el-menu-base-level-padding);
   list-style: none;
-  cursor: pointer;
   position: relative;
   transition:
     border-color var(--el-transition-duration),

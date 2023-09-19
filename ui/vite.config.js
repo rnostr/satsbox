@@ -24,7 +24,7 @@ export default defineConfig({
     //outDir: '../public',
     rollupOptions: {
       input: {
-        //main: resolve(__dirname, 'index.html'),
+        main: resolve(__dirname, 'index.html'),
         wallet: resolve(__dirname, 'wallet.html'),
       },
     },
