@@ -221,7 +221,9 @@ async function onLogin() {
               <p>Donated: {{ user.donate_amount }} sats</p>
               <el-form :model="donation" @submit.prevent="onDonate">
                 <el-form-item>
-                  <el-input v-model="donation.amount" type="number" />
+                  <el-input v-model="donation.amount" type="number">
+                    <template #append> sats </template>
+                  </el-input>
                 </el-form-item>
                 <el-form-item>
                   <el-radio-group v-model="donation.amount" v-if="info.donation.amounts.length > 1">
