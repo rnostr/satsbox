@@ -23,6 +23,33 @@ pub struct AppState {
     pub setting: Setting,
 }
 
+pub mod ui {
+    use super::*;
+    use actix_files::NamedFile;
+    use actix_web::get;
+
+    #[get("/")]
+    pub async fn index(state: web::Data<AppState>) -> Result<NamedFile, Error> {
+        let path = format!("{}/index.html", state.setting.ui.dist);
+        let file = NamedFile::open(path)?;
+        Ok(file.use_last_modified(true).use_etag(true))
+    }
+
+    #[get("/wallet")]
+    pub async fn wallet(state: web::Data<AppState>) -> Result<NamedFile, Error> {
+        let path = format!("{}/wallet.html", state.setting.ui.dist);
+        let file = NamedFile::open(path)?;
+        Ok(file.use_last_modified(true).use_etag(true))
+    }
+
+    #[get("/wallet/{sub:.*}")]
+    pub async fn wallet_sub(state: web::Data<AppState>) -> Result<NamedFile, Error> {
+        let path = format!("{}/wallet.html", state.setting.ui.dist);
+        let file = NamedFile::open(path)?;
+        Ok(file.use_last_modified(true).use_etag(true))
+    }
+}
+
 impl AppState {
     pub async fn create<P: AsRef<Path>>(
         setting_path: Option<P>,
@@ -100,6 +127,7 @@ pub fn create_web_app(
         InitError = (),
     >,
 > {
+    let dist = data.setting.ui.dist.clone();
     let app = WebApp::new()
         .app_data(data)
         .wrap(middleware::Logger::default()) // enable logger
@@ -116,7 +144,15 @@ pub fn create_web_app(
                 )
                 .service(lnurl::scope())
                 .service(nip05::info),
-        );
+        )
+        .service(
+            actix_files::Files::new("/assets", format!("{}/assets", dist))
+                .use_etag(true)
+                .use_last_modified(true),
+        )
+        .service(ui::index)
+        .service(ui::wallet)
+        .service(ui::wallet_sub);
     if cfg!(debug_assertions) {
         // cors domain test when debug
         app.service(

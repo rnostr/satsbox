@@ -55,6 +55,7 @@ base64 = "0.21.2"
 governor = "0.6.0"
 futures = "0.3.28"
 actix-cors = "0.6.4"
+actix-files = "0.6.2"
 
 [dev-dependencies]
 anyhow = "1.0.71"

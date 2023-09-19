@@ -262,6 +262,21 @@ impl Donation {
 //     }
 // }
 
+/// Ui config
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(default)]
+pub struct Ui {
+    pub dist: String,
+}
+
+impl Default for Ui {
+    fn default() -> Self {
+        Self {
+            dist: "./ui/dist".to_owned(),
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Setting {
@@ -287,6 +302,7 @@ pub struct Setting {
     pub nwc: Nwc,
     pub lnurl: Lnurl,
     pub donation: Donation,
+    pub ui: Ui,
 
     /// flatten extensions setting to json::Value
     #[serde(flatten)]
@@ -323,6 +339,7 @@ impl Default for Setting {
             nwc: Default::default(),
             lnurl: Default::default(),
             donation: Default::default(),
+            ui: Default::default(),
         }
     }
 }

@@ -2,7 +2,10 @@ import axios from 'axios'
 import { ElMessageBox } from 'element-plus'
 import { getSignature, getEventHash, getPublicKey } from 'nostr-tools'
 import { sha256 } from 'js-sha256'
-const baseURL = import.meta.env.VITE_API_BASE_URL
+let baseURL = import.meta.env.VITE_API_BASE_URL
+if (baseURL.startsWith('/')) {
+  baseURL = location.origin + baseURL
+}
 
 export const auth = {
   privkey: null,

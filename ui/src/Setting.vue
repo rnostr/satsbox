@@ -111,13 +111,13 @@ async function resetLndhub(disable) {
 async function onLogin() {
   try {
     auth.privkey = decodePrivkey(login.privkey)
-    login.privkey = ''
   } catch (e) {
     ElMessageBox.alert(e.message, 'Error')
   }
   let res = await get('v1/info')
   info.value = res.data
   await loadUser()
+  login.privkey = demoKey
   loginFormVisible.value = false
 }
 </script>
