@@ -1,9 +1,9 @@
 //! http api
 
-use crate::{auth, key::Privkey, setting::Setting, AppState, Error, Result};
-use actix_web::{get, http::Uri, post, web, HttpResponse, Responder, Scope};
+use crate::{auth, full_uri_from_req, key::Privkey, setting::Setting, AppState, Error, Result};
+use actix_web::{get, http::Uri, post, web, HttpRequest, HttpResponse, Responder, Scope};
 use entity::user;
-use nostr_sdk::Keys;
+use nostr_sdk::{prelude::ToBech32, secp256k1::XOnlyPublicKey, Keys};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -28,13 +28,24 @@ fn privkey_to_pubkey(k: Privkey) -> String {
 }
 
 #[get("/info")]
-pub async fn info(state: web::Data<AppState>) -> Result<HttpResponse, Error> {
+pub async fn info(state: web::Data<AppState>, req: HttpRequest) -> Result<HttpResponse, Error> {
+    let uri = full_uri_from_req(&req);
+
     let info = state.service.info().await?;
 
     let username_chars: Vec<usize> = (0..state.setting.donation.amounts.len())
         .map(|i| i + 2)
         .rev()
         .collect();
+
+    let host = uri.authority().map(|a| a.as_str()).unwrap_or_default();
+    let donation_address = state.setting.donation.privkey.map(|k| {
+        format!(
+            "{}@{}",
+            Keys::new(k.into()).public_key().to_bech32().unwrap(),
+            host,
+        )
+    });
 
     Ok(HttpResponse::Ok().json(json!({
         "version": version(),
@@ -45,6 +56,7 @@ pub async fn info(state: web::Data<AppState>) -> Result<HttpResponse, Error> {
         "fee": state.setting.fee,
         "donation": {
             "pubkey": state.setting.donation.privkey.map(privkey_to_pubkey),
+            "address": donation_address,
             "amounts": state.setting.donation.amounts,
             "restrict_username": state.setting.donation.restrict_username,
             "username_chars": username_chars,
@@ -101,7 +113,7 @@ pub async fn my(
         .await?
         .unwrap_or_default();
 
-    let pubkey = hex::encode(nostr_user.pubkey);
+    let pubkey = hex::encode(nostr_user.pubkey.clone());
     let host = nostr_user
         .url
         .authority()
@@ -109,7 +121,12 @@ pub async fn my(
         .unwrap_or_default();
     let address = format!(
         "{}@{}",
-        user.username.clone().unwrap_or(pubkey.clone()),
+        user.username.clone().unwrap_or_else(|| {
+            XOnlyPublicKey::from_slice(&nostr_user.pubkey)
+                .unwrap()
+                .to_bech32()
+                .unwrap()
+        }),
         host,
     );
 
