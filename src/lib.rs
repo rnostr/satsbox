@@ -84,9 +84,9 @@ impl ResponseError for Error {
     /// Creates full response for error.
     fn error_response(&self) -> HttpResponse {
         HttpResponse::build(self.status_code()).json(json!({
-            "error": true,
-            "status_code": self.status_code().as_u16(),
-            "message": self.to_string()
+            "error": {
+                "message": self.to_string()
+            }
         }))
     }
 }
