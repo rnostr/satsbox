@@ -31,6 +31,8 @@ pub enum Source {
     Zaps,
     #[sea_orm(string_value = "nwc")]
     Nwc,
+    #[sea_orm(string_value = "api")]
+    Api,
 }
 
 impl Default for Source {

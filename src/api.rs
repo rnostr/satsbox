@@ -21,6 +21,7 @@ pub fn scope() -> Scope {
         .service(my)
         .service(reset_lndhub)
         .service(update_username)
+        .service(pay_invoice)
 }
 
 fn privkey_to_pubkey(k: Privkey) -> String {
@@ -262,4 +263,38 @@ pub async fn update_username(
         .await?;
 
     Ok(web::Json(json!({"success": true})))
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct PayInvoiceReq {
+    invoice: String,
+}
+
+/// pay invoice api
+#[post("/pay_invoice")]
+pub async fn pay_invoice(
+    state: web::Data<AppState>,
+    nostr_user: auth::NostrAuth,
+) -> Result<impl Responder, Error> {
+    let data: PayInvoiceReq = serde_json::from_slice(&nostr_user.payload)?;
+    let user = state.service.get_user(nostr_user.pubkey.clone()).await?;
+
+    if let Some(user) = user {
+        let payment = state
+            .service
+            .pay(
+                &user,
+                data.invoice,
+                &state.setting.fee,
+                entity::invoice::Source::Api,
+                false,
+            )
+            .await?;
+        Ok(web::Json(json!({
+            "preimage": hex::encode(payment.payment_preimage)
+        })))
+    } else {
+        Err(Error::InsufficientBalance)
+    }
 }
