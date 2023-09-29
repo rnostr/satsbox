@@ -72,6 +72,12 @@ async function onDonate() {
   donationQr.value = await QRCode.toDataURL(data.pr)
 }
 
+async function onPayDonation() {
+  let res = await auth.post('v1/pay_invoice', { invoice: donationUrl.value })
+  ElMessageBox.alert(`Your paymemnt preimage is ${res.data.preimage}`, 'Pay success')
+  await loadUser()
+}
+
 async function onCopy(txt) {
   try {
     await copy(txt)
@@ -218,7 +224,7 @@ async function onLogin() {
                   <span>Donation</span>
                 </div>
               </template>
-              <p>Donated: {{ user.donate_amount }} sats</p>
+              <p>Donated: {{ user.donate_amount / 1000 }} sats</p>
               <el-form :model="donation" @submit.prevent="onDonate">
                 <el-form-item>
                   <el-input v-model="donation.amount" type="number">
@@ -248,6 +254,8 @@ async function onLogin() {
                     </template></el-input
                   >
                 </p>
+                <p>Or</p>
+                <p><el-button @click="onPayDonation">Pay with the balance</el-button></p>
               </div>
             </el-card>
           </el-col>

@@ -108,11 +108,9 @@ export function post(url, data, config) {
 
 function parseError(data) {
   if (data && data.error) {
-    const error = new Error(data.message)
+    const error = new Error(data.error.message)
     error.data = data
-    error.name = data.error
-    error.code = data.code
-    error.status_code = data.status_code
+    error.code = data.error.code
     return error
   }
 }
