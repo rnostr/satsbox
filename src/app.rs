@@ -130,7 +130,8 @@ pub fn create_web_app(
     let dist = data.setting.ui.dist.clone();
     let app = WebApp::new()
         .app_data(data)
-        .wrap(middleware::Logger::default()) // enable logger
+        .wrap(middleware::Logger::default())
+        .wrap(middleware::Compress::default()) // enable logger
         .configure(lndhub::configure)
         .service(
             web::scope("/.well-known")
