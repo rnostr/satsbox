@@ -10,19 +10,21 @@ import QRCode from 'qrcode'
 
 const { isSupported, copy } = useClipboard()
 const demoKey = import.meta.env.VITE_DEMO_PRIVKEY || ''
-const login = reactive({
+const loginData = reactive({
   privkey: demoKey,
 })
-const update = reactive({
+const updateData = reactive({
   username: '',
 })
 const donation = reactive({
   amount: 0,
 })
 
-const loginFormVisible = ref(true)
+const loginVisible = ref(true)
+const loginLoading = ref(false)
 const user = ref({ lndhub: {} })
 const info = ref({ nwc: {}, donation: {} })
+const changeUsernameLoading = ref(false)
 
 const lndhubVisible = ref(false)
 const lndhubQr = ref('')
@@ -33,21 +35,30 @@ const nwcQr = ref('')
 const donationVisible = ref(false)
 const donationQr = ref('')
 const donationUrl = ref('')
+const donationLoading = ref(false)
 
 function logout() {
   auth.privkey = null
-  loginFormVisible.value = true
+  loginVisible.value = true
   user.value = { lndhub: {} }
   info.value = { nwc: {}, donation: {} }
 }
 
 async function onChangeUsername() {
-  await auth.post('v1/update_username', { username: update.username || null })
+  return wrapLoading(changeUsernameLoading, changeUsername())
+}
+
+async function changeUsername() {
+  await auth.post('v1/update_username', { username: updateData.username || null })
   await loadUser()
   ElMessageBox.alert('Update success', 'Success')
 }
 
 async function onDonate() {
+  return wrapLoading(donationLoading, donate())
+}
+
+async function donate() {
   if (!user.value.pubkey) return
 
   let amount = (parseInt(donation.amount) || 0) * 1000
@@ -98,7 +109,7 @@ async function loadUser() {
     u.nwc = `nostr+walletconnect://${nwc.pubkey}?relay=${nwc.relays[0]}&secret=${auth.privkey}&lud16=${u.address}`
   }
   user.value = u
-  update.username = u.username || ''
+  updateData.username = u.username || ''
   if (demoKey) console.log(info.value, user.value)
   if (u.lndhub.url) {
     lndhubQr.value = await QRCode.toDataURL(u.lndhub.url)
@@ -110,21 +121,32 @@ async function loadUser() {
 
 async function resetLndhub(disable) {
   await auth.post('v1/reset_lndhub', { disable: !!disable })
-  if (!disable) lndhubVisible = true
+  if (!disable) lndhubVisible.value = true
   await loadUser()
 }
 
 async function onLogin() {
+  return wrapLoading(loginLoading, login())
+}
+
+async function login() {
   try {
-    auth.privkey = decodePrivkey(login.privkey)
+    auth.privkey = decodePrivkey(loginData.privkey)
   } catch (e) {
     ElMessageBox.alert(e.message, 'Error')
   }
   let res = await get('v1/info')
   info.value = res.data
   await loadUser()
-  login.privkey = demoKey
-  loginFormVisible.value = false
+  loginData.privkey = demoKey
+  loginVisible.value = false
+}
+
+function wrapLoading(ref, promise) {
+  ref.value = true
+  return promise.finally(() => {
+    ref.value = false
+  })
 }
 </script>
 
@@ -136,6 +158,7 @@ async function onLogin() {
         <li class="menu-item">Satsbox</li>
         <div class="flex-grow" />
         <li v-if="user.pubkey" class="menu-item"><el-button @click="logout">Logout</el-button></li>
+
         <li class="menu-item">
           <div class="switch-item" @click="toggleDark()">
             <div class="switch" role="switch">
@@ -160,21 +183,39 @@ async function onLogin() {
             </div>
           </div>
         </li>
+        <li class="menu-item">
+          <a href="https://github.com/rnostr/satsbox" target="_blank" title="Github">
+            <el-icon :size="24">
+              <svg
+                preserveAspectRatio="xMidYMid meet"
+                viewBox="0 0 24 24"
+                width="1.2em"
+                height="1.2em"
+                data-v-6c8d2bba=""
+              >
+                <path
+                  fill="currentColor"
+                  d="M12 2C6.475 2 2 6.475 2 12a9.994 9.994 0 0 0 6.838 9.488c.5.087.687-.213.687-.476c0-.237-.013-1.024-.013-1.862c-2.512.463-3.162-.612-3.362-1.175c-.113-.288-.6-1.175-1.025-1.413c-.35-.187-.85-.65-.013-.662c.788-.013 1.35.725 1.538 1.025c.9 1.512 2.338 1.087 2.912.825c.088-.65.35-1.087.638-1.337c-2.225-.25-4.55-1.113-4.55-4.938c0-1.088.387-1.987 1.025-2.688c-.1-.25-.45-1.275.1-2.65c0 0 .837-.262 2.75 1.026a9.28 9.28 0 0 1 2.5-.338c.85 0 1.7.112 2.5.337c1.912-1.3 2.75-1.024 2.75-1.024c.55 1.375.2 2.4.1 2.65c.637.7 1.025 1.587 1.025 2.687c0 3.838-2.337 4.688-4.562 4.938c.362.312.675.912.675 1.85c0 1.337-.013 2.412-.013 2.75c0 .262.188.574.688.474A10.016 10.016 0 0 0 22 12c0-5.525-4.475-10-10-10z"
+                ></path>
+              </svg>
+            </el-icon>
+          </a>
+        </li>
       </ul>
     </el-header>
     <el-main>
       <el-dialog
-        v-model="loginFormVisible"
+        v-model="loginVisible"
         :show-close="false"
         :center="true"
         :close-on-click-modal="false"
         :close-on-press-escape="false"
       >
-        <el-form :model="login" @submit.prevent="onLogin">
+        <el-form :model="loginData" @submit.prevent="onLogin">
           <el-form-item>
             <el-input
               size="large"
-              v-model="login.privkey"
+              v-model="loginData.privkey"
               autocomplete="off"
               placeholder="Login with nostr private key"
             />
@@ -182,7 +223,7 @@ async function onLogin() {
         </el-form>
         <template #footer>
           <span class="dialog-footer">
-            <el-button type="primary" @click="onLogin"> Confirm </el-button>
+            <el-button type="primary" @click="onLogin" :loading="loginLoading"> Confirm </el-button>
           </span>
         </template>
       </el-dialog>
@@ -202,16 +243,23 @@ async function onLogin() {
             <el-card class="card" v-if="user.allow_update_username">
               <template #header>
                 <div class="card-header">
-                  <span>Custom username</span>
+                  <span>Custom lightning address name</span>
                 </div>
               </template>
-              <el-form :model="update" @submit.prevent="onChangeUsername">
+              <p>Minimum {{ user.allow_update_username_min_chars }} characters supported</p>
+              <el-form
+                :model="updateData"
+                @submit.prevent="onChangeUsername"
+                v-loading="changeUsernameLoading"
+              >
                 <el-form-item>
                   <el-input
-                    v-model="update.username"
+                    v-model="updateData.username"
                     autocomplete="off"
                     placeholder="Input username"
-                  />
+                  >
+                    <template #append> @{{ user.address.split('@')[1] }} </template>
+                  </el-input>
                 </el-form-item>
                 <el-form-item>
                   <el-button type="primary" @click="onChangeUsername"> Submit </el-button>
@@ -225,27 +273,38 @@ async function onLogin() {
                 </div>
               </template>
               <p>Donated: {{ user.donate_amount / 1000 }} sats</p>
-              <el-form :model="donation" @submit.prevent="onDonate">
+              <el-form :model="donation" @submit.prevent="onDonate" v-loading="donationLoading">
+                <p v-if="info.donation.restrict_username">
+                  You can get a custom short lightning address by donating this project, more
+                  donations get shorter address!
+                </p>
+
+                <el-form-item>
+                  <el-radio-group v-model="donation.amount" v-if="info.donation.amounts.length > 1">
+                    <el-radio-button
+                      v-for="(amount, index) in info.donation.amounts"
+                      :key="amount"
+                      :label="amount / 1000"
+                    >
+                      <span>{{ amount / 1000 }} sats</span>
+                      <p v-if="info.donation.restrict_username">
+                        Min {{ info.donation.username_chars[index] }} chars
+                      </p>
+                    </el-radio-button>
+                  </el-radio-group>
+                </el-form-item>
                 <el-form-item>
                   <el-input v-model="donation.amount" type="number">
                     <template #append> sats </template>
                   </el-input>
                 </el-form-item>
                 <el-form-item>
-                  <el-radio-group v-model="donation.amount" v-if="info.donation.amounts.length > 1">
-                    <el-radio-button
-                      v-for="amount in info.donation.amounts"
-                      :key="amount"
-                      :label="amount / 1000"
-                      >{{ amount / 1000 }} sats</el-radio-button
-                    >
-                  </el-radio-group>
-                </el-form-item>
-                <el-form-item>
                   <el-button type="primary" @click="onDonate"> Donate </el-button>
                 </el-form-item>
               </el-form>
               <div class="text-center" v-if="donationVisible">
+                <p><el-button @click="onPayDonation">Pay with the balance</el-button></p>
+                <p>or copy invoice to other wallet</p>
                 <p><img :src="donationQr" /></p>
                 <p>
                   <el-input v-model="donationUrl"
@@ -254,8 +313,6 @@ async function onLogin() {
                     </template></el-input
                   >
                 </p>
-                <p>Or</p>
-                <p><el-button @click="onPayDonation">Pay with the balance</el-button></p>
               </div>
             </el-card>
           </el-col>
@@ -263,9 +320,27 @@ async function onLogin() {
             <el-card class="card">
               <template #header>
                 <div class="card-header">
-                  <span>Lndhub</span>
+                  <span>LndHub</span>
                 </div>
               </template>
+              <p>
+                You can receive and send sats using a wallet that supports the
+                <a href="https://github.com/BlueWallet/LndHub" target="_blank">LndHub api</a>.
+                <br />
+                Recommended Wallet:
+              </p>
+              <ul>
+                <li>
+                  <a href="https://bluewallet.io/" target="_blank"
+                    >BlueWallet - Bitcoin wallet for iOS & Android</a
+                  >
+                </li>
+                <li>
+                  <a href="https://getalby.com/" target="_blank"
+                    >Alby - Lightning Browser Extension</a
+                  >
+                </li>
+              </ul>
 
               <div v-if="user.lndhub.url">
                 <p>
@@ -285,18 +360,18 @@ async function onLogin() {
                 </div>
                 <p>
                   <el-popconfirm
-                    title="Reset lndhub will make the previously
-                effective"
+                    title="Reset will invalidate the previous lndhub url"
                     @confirm="resetLndhub()"
+                    width="200"
                   >
                     <template v-slot:reference>
                       <el-button>Reset</el-button>
                     </template>
                   </el-popconfirm>
                   <el-popconfirm
-                    title="Disable lndhub will make the previously
-                effective"
+                    title="Disable will invalidate the previous lndhub url"
                     @confirm="resetLndhub(true)"
+                    width="200"
                   >
                     <template v-slot:reference>
                       <el-button>Disable</el-button>
@@ -316,6 +391,26 @@ async function onLogin() {
                   <span>Nostr Wallet Connect</span>
                 </div>
               </template>
+              <p>
+                You can use an app that supports
+                <a href="https://github.com/nostr-protocol/nips/blob/master/47.md" target="_blank"
+                  >Nostr Wallet Connect</a
+                >
+                to send sats.
+                <br />
+                Recommended App:
+              </p>
+              <ul>
+                <li>
+                  <a href="https://damus.io/" target="_blank">Damus - Nostr client for iOS/MacOS</a>
+                </li>
+                <li>
+                  <a href="https://github.com/vitorpamplona/amethyst" target="_blank"
+                    >Amethyst - Nostr client for Android</a
+                  >
+                </li>
+              </ul>
+
               <p>
                 <el-button @click="nwcVisible = !nwcVisible"
                   >{{ nwcVisible ? 'Hide' : 'Show' }} connect url</el-button

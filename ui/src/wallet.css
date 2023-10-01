@@ -123,7 +123,7 @@ h3 a {
   display: flex;
   align-items: center;
   height: var(--el-menu-item-height);
-  line-height: var(--el-menu-item-height);
+  /*line-height: var(--el-menu-item-height);*/
   font-size: var(--el-menu-item-font-size);
   color: var(--el-menu-text-color);
   padding: 0 var(--el-menu-base-level-padding);
@@ -137,6 +137,9 @@ h3 a {
   white-space: nowrap;
 }
 
+.menu-item a {
+  color: var(--text-color);
+}
 .flex-grow {
   flex-grow: 1;
 }
