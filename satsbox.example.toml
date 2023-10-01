@@ -1,0 +1,81 @@
+# satsbox configuration
+# 
+# database url @see https://www.sea-ql.org/SeaORM/docs/install-and-config/connection/ 
+# sqlite://satsbox.sqlite?mode=rwc
+# postgres://test:test@127.0.0.1:8432/satsbox
+# mysql://test:test@127.0.0.1:8306/satsbox
+
+db_url = "sqlite://satsbox.sqlite?mode=rwc"
+
+# lightning backend. cln or lnd
+lightning = "cln"
+
+# lightning node address
+lightning_node = "127.0.0.1:9735"
+
+# lnd grpc connect 
+[lnd]
+url = "https://127.0.0.1:8009"
+cert = "./contrib/data/lnd/tls.cert"
+macaroon = "./contrib/data/lnd/data/chain/bitcoin/regtest/admin.macaroon"
+
+# cln grpc connect 
+[cln]
+url = "https://127.0.0.1:8008"
+ca = "./contrib/data/cln/regtest/ca.pem"
+client = "./contrib/data/cln/regtest/client.pem"
+client_key = "./contrib/data/cln/regtest/client-key.pem"
+
+# config fee
+[fee]
+# lightning: The fee limit expressed as a percentage of the payment amount. (0-100)
+pay_limit_pct = 2
+# lightning: small amounts (<=1k sat) payment max fee.
+small_pay_limit_pct = 10
+# internal pyament fee
+internal_pct = 0
+# service fee per payment
+service_pct = 0
+
+# config auth
+[auth]
+# only whitelist pubkey can use service.
+# whitelist = ["npub1fuvh5hz9tvyesqnrsrjlfy45j9dwj0zrzuzs4jy53kff850ge5sq6te9w6"]
+# jwt auth secret, must change
+secret = "test"
+
+# config lnurl
+[lnurl]
+# The nostr privkey for send zap receipts
+privkey = "c267c52ca60b4d6553891ad201eebda3af21addcedb62bf624c942413a0ced46"
+# Additional relays for send zap receipts
+relays = ["ws://127.0.0.1:8777", "ws://127.0.0.1:8880"]
+
+# config nwc
+[nwc]
+# The nostr privkey for interacting with users
+privkey = "c267c52ca60b4d6553891ad201eebda3af21addcedb62bf624c942413a0ced46"
+# The nostr relays for interacting with users
+relays = ["ws://127.0.0.1:8777", "ws://127.0.0.1:8880"]
+
+# config network
+[network]
+# Interface to listen on. Use 0.0.0.0 to listen on all interfaces
+host = "127.0.0.1"
+# Listen port
+port = 8080
+
+# config thread
+[thread]
+# number of http server threads
+# default 0 will use the num of cpus
+# http = 0
+
+# config donation
+[donation]
+# account privkey for receive donation
+privkey = "c267c52ca60b4d6553891ad201eebda3af21addcedb62bf624c942413a0ced46"
+# recommended donation amounts
+amounts = [1000000, 10000000, 100000000]
+# The short lightning address is only available to users who have made a donation.
+restrict_username = true

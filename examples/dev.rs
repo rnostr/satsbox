@@ -11,7 +11,11 @@ use tracing::info;
 #[command(name = "satsbox", about = "satsbox dev server.", version)]
 pub struct Cli {
     /// config file path
-    #[arg(short = 'c', value_name = "PATH")]
+    #[arg(
+        short = 'c',
+        value_name = "PATH",
+        default_value = "./satsbox.example.toml"
+    )]
     pub config: Option<PathBuf>,
 
     /// fresh db
@@ -43,7 +47,7 @@ async fn main() -> Result<()> {
         std::env::set_var("RUST_LOG", "DEBUG");
     }
     // try to load config from .dev.env
-    let _ = dotenvy::from_filename(".dev.env");
+    // let _ = dotenvy::from_filename(".dev.env");
     // println!("{:?}", std::env::vars().collect::<Vec<_>>());
     tracing_subscriber::fmt::init();
 

@@ -293,6 +293,7 @@ pub struct Setting {
     pub network: Network,
 
     pub lightning: Lightning,
+    /// lightning node address
     pub lightning_node: String,
 
     pub cln: Option<Cln>,
