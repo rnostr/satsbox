@@ -91,7 +91,7 @@ async fn whitelist() -> Result<()> {
     )
     .await?;
 
-    assert_eq!(val["error"], json!(true));
+    assert!(val["error"].is_object());
     assert_eq!(status, 401);
 
     Ok(())
@@ -151,15 +151,18 @@ async fn user() -> Result<()> {
         json!({ "username": "tester&" }),
     )
     .await?;
-    assert_eq!(val["error"], json!(true));
+    assert!(val["error"].is_object());
     assert_eq!(status, 400);
-    assert!(val["message"].as_str().unwrap().contains("characters"));
+    assert!(val["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("characters"));
 
     let (val, status) =
         util::nostr_auth_post(&app, update_username_url, &keys, json!({ "username": "t" })).await?;
-    assert_eq!(val["error"], json!(true));
+    assert!(val["error"].is_object());
     assert_eq!(status, 400);
-    assert!(val["message"].as_str().unwrap().contains("less"));
+    assert!(val["error"]["message"].as_str().unwrap().contains("less"));
 
     let (val, status) = util::nostr_auth_post(
         &app,
@@ -168,9 +171,12 @@ async fn user() -> Result<()> {
         json!({ "username": "t11111111111111111111111111111" }),
     )
     .await?;
-    assert_eq!(val["error"], json!(true));
+    assert!(val["error"].is_object());
     assert_eq!(status, 400);
-    assert!(val["message"].as_str().unwrap().contains("greater"));
+    assert!(val["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("greater"));
     Ok(())
 }
 
@@ -202,8 +208,11 @@ async fn donate_user() -> Result<()> {
         json!({ "username": "tt" }),
     )
     .await?;
-    assert_eq!(val["error"], json!(true));
-    assert!(val["message"].as_str().unwrap().contains("allowed"));
+    assert!(val["error"].is_object());
+    assert!(val["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("allowed"));
 
     update_donate_amount(&state.service, pubkey.clone(), 1_000_000).await?;
     let (val, status) = util::nostr_auth_get(&app, my_url, &keys).await?;
@@ -230,8 +239,8 @@ async fn donate_user() -> Result<()> {
         json!({ "username": "tt" }),
     )
     .await?;
-    assert_eq!(val["error"], json!(true));
-    assert!(val["message"].as_str().unwrap().contains("less"));
+    assert!(val["error"].is_object());
+    assert!(val["error"]["message"].as_str().unwrap().contains("less"));
 
     let (val, _) = util::nostr_auth_post(
         &app,
