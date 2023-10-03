@@ -1,5 +1,15 @@
 # satsbox configuration
+
+# All configurations can also be set via environment variables
+# secondary attributes can be separated by '__', arrays can be separated by space
+# Example:
+#
+# SATSBOX_DB_URL=sqlite://data/satsbox.sqlite?mode=rwc
+# SATSBOX_LND__URL=https://127.0.0.1:8009
+# SATSBOX_NWC__RELAYS="ws://127.0.0.1:8777 ws://127.0.0.1:8880"
 # 
+
+
 # database url @see https://www.sea-ql.org/SeaORM/docs/install-and-config/connection/ 
 # sqlite://satsbox.sqlite?mode=rwc
 # postgres://test:test@127.0.0.1:8432/satsbox

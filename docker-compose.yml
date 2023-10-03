@@ -1,0 +1,35 @@
+version: '3.8'
+networks:
+  default:
+
+services:
+
+  satsbox:
+    restart: unless-stopped
+    build:
+      context: ./
+      args:
+        # build base
+        # base: the default base
+        # mirror_cn: use mirror for china
+        - BASE=${SATSBOX_BASE:-base}
+    image: rnostr/satsbox
+    # set it to 0 if you are running as root
+    # else find the right id with the id -u command
+    #user: '0'
+    user: ${USERID}
+    ports:
+      - '9080:8080'
+    environment:
+      # log info, debug, error....
+      - RUST_LOG=${SATSBOX_LOG:-info}
+      - SATSBOX_DB_URL=sqlite://data/satsbox.sqlite?mode=rwc
+      - SATSBOX_AUTH__SECRET=change_me
+      - SATSBOX_LIGHTNING=lnd
+      - SATSBOX_LND__URL=https://host.docker.internal:8009
+      - SATSBOX_LND__CERT=./contrib/data/lnd/tls.cert
+      - SATSBOX_LND__MACAROON=./contrib/data/lnd/data/chain/bitcoin/regtest/admin.macaroon
+
+    volumes:
+      - $PWD/data:/satsbox/data
+      - $PWD/contrib:/satsbox/contrib
