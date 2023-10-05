@@ -50,7 +50,7 @@ tokio = { version = "1.29.1", features = [
 jsonwebtoken = "8.3.0"
 hex = { version = "0.4.3", features = ["serde"] }
 serde-aux = { version = "4.2.0", default-features = false }
-nostr-sdk = { version = "0.23.0" }
+nostr-sdk = "0.24.0"
 base64 = "0.21.2"
 governor = "0.6.0"
 futures = "0.3.28"
