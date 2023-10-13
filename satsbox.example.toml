@@ -56,14 +56,14 @@ secret = "test"
 
 # config lnurl
 [lnurl]
-# The nostr privkey for send zap receipts
+# The nostr privkey for send zap receipts, if not set, the zaps feature will be disabled.
 privkey = "c267c52ca60b4d6553891ad201eebda3af21addcedb62bf624c942413a0ced46"
 # Additional relays for send zap receipts
 relays = ["ws://127.0.0.1:8777", "ws://127.0.0.1:8880"]
 
 # config nwc
 [nwc]
-# The nostr privkey for interacting with users
+# The nostr privkey for interacting with users, if not set, the nwc feature will be disabled.
 privkey = "c267c52ca60b4d6553891ad201eebda3af21addcedb62bf624c942413a0ced46"
 # The nostr relays for interacting with users
 relays = ["ws://127.0.0.1:8777", "ws://127.0.0.1:8880"]
@@ -83,7 +83,7 @@ port = 8080
 
 # config donation
 [donation]
-# account privkey for receive donation
+# account privkey for receive donation, if not set, the donation feature will be disabled.
 privkey = "c267c52ca60b4d6553891ad201eebda3af21addcedb62bf624c942413a0ced46"
 # recommended donation amounts
 amounts = [1000000, 10000000, 100000000]

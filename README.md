@@ -1,7 +1,5 @@
 # Satsbox
 
-Under development, datasheets may not support upgrades.
-
 Nostr friendly bitcoin lightning custodial wallet service.
 
 ## Features
@@ -14,3 +12,47 @@ Nostr friendly bitcoin lightning custodial wallet service.
 - [LndHub](https://github.com/BlueWallet/LndHub) api compatible
 - Supported backends: [LND](https://github.com/lightningnetwork/lnd) and [CLN](https://github.com/ElementsProject/lightning) 23.08+
 - Easily create private non-custodial multi-account wallet service by setting up whitelist
+
+## Usage
+
+### Requirement
+
+[LND](https://github.com/lightningnetwork/lnd) or [CLN](https://github.com/ElementsProject/lightning) 23.08+
+
+### Docker
+
+```shell
+
+# Create data dir
+mkdir ./data
+# Refer to satsbox.example.toml edit configuration file
+touch satsbox.toml
+
+docker run -it --rm -p 8080:8080 \
+  --user=$(id -u) \
+  -v $(pwd)/data:/satsbox/data \
+  -v $(pwd)/satsbox.toml:/satsbox/satsbox.toml \
+  --name satsbox rnostr/satsbox:latest
+
+```
+
+## Development
+
+```shell
+
+git clone https://github.com/rnostr/satsbox.git
+
+# start dependencies
+cd satsbox/contrib
+docker compose up -d
+
+# init regtest lightning network
+sh dev.sh test
+
+# copy cert file from docker to local
+sh dev.sh copy_cert
+
+# run test
+cargo test
+
+```
