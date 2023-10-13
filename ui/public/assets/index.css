@@ -16,19 +16,11 @@
 
 a {
   font-weight: 500;
-  color: #646cff;
+  /*color: #646cff;*/
+  color: #409eff;
   text-decoration: inherit;
 }
 
-a:hover {
-  color: #535bf2;
-}
-
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
 a:hover {
   color: #535bf2;
 }
@@ -58,7 +50,7 @@ h1 {
   transition: border-color 0.25s;
 }
 .btn:hover {
-  border-color: #646cff;
+  border-color: #409eff;
 }
 .btn:focus,
 .btn:focus-visible {
@@ -91,8 +83,8 @@ h1 {
 }
 
 .logo {
-  height: 6em;
-  padding: 1.5em;
+  height: 10em;
+  padding: 1em;
   will-change: filter;
   transition: filter 300ms;
 }

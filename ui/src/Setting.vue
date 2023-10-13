@@ -275,8 +275,8 @@ function wrapLoading(ref, promise) {
               <p>Donated: {{ user.donate_amount / 1000 }} sats</p>
               <el-form :model="donation" @submit.prevent="onDonate" v-loading="donationLoading">
                 <p v-if="info.donation.restrict_username">
-                  You can get a custom short lightning address by donating this project, more
-                  donations get shorter address!
+                  You can get a custom short lightning address name by donating this project, more
+                  donations make address name shorter!
                 </p>
 
                 <el-form-item>
