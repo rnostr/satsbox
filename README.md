@@ -56,8 +56,12 @@ sh dev.sh copy_cert
 cd ../
 cargo test
 
+# build ui
+cd ui/
+yarn build
+
 # run dev use config satsbox.example.toml
-# cargo run --example dev
+cargo run --example dev
 
 # run ui dev
 cd ui/
